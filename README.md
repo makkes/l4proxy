@@ -1,6 +1,6 @@
 # L4Proxy
 
-L4Proxy is a rudimentary level 4 proxy, currently supporting IPv4 TCP connections.
+L4Proxy is a rudimentary layer 4 proxy, currently supporting IPv4 TCP connections.
 
 ## Quick Start
 
