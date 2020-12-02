@@ -27,7 +27,7 @@ build: l4proxy-$(GIT_VERSION)-$(GOOS)-$(GOARCH)
 
 .PHONY: l4proxy-$(GIT_VERSION)-$(GOOS)-$(GOARCH)
 l4proxy-$(GIT_VERSION)-$(GOOS)-$(GOARCH):
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o l4proxy-$(GIT_VERSION)-$(GOOS)-$(GOARCH)
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o ./build/l4proxy-$(GIT_VERSION)-$(GOOS)-$(GOARCH)
 
 .PHONY: release
 release:
