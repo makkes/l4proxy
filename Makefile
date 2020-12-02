@@ -39,3 +39,7 @@ release:
 	GOOS=darwin GOARCH=amd64 make build
 	GOOS=linux GOARCH=arm64 make build
 	GOOS=linux GOARCH=arm make build
+
+.PHONY: test
+test:
+	go test -race ./...

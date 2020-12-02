@@ -1,9 +1,9 @@
 package main
 
 import (
+	"context"
 	goflag "flag"
 	"fmt"
-	"io"
 	"math/rand"
 	"net"
 	"os"
@@ -14,56 +14,11 @@ import (
 	"github.com/go-logr/glogr"
 	"github.com/go-logr/logr"
 	flag "github.com/spf13/pflag"
+
+	"github.com/makkes/l4proxy/backend"
 )
 
-func proxy(log logr.Logger, to net.Conn, from net.Conn, quitChan <-chan struct{}) <-chan struct{} {
-	closeChan := make(chan struct{})
-	log = log.WithName(fmt.Sprintf("%s->%s", from.RemoteAddr().String(), to.RemoteAddr().String()))
-	go func() {
-		buf := make([]byte, 1024)
-		var nRead int
-		for {
-			select {
-			case <-quitChan:
-				return
-			default:
-				var err error
-				nRead, err = from.Read(buf)
-				if err != nil {
-					opErr, ok := err.(*net.OpError)
-					if err == io.EOF || ok && opErr.Err.Error() == "use of closed network connection" {
-						log.V(4).Info("connection has been closed", "conn", from.RemoteAddr().String())
-					} else {
-						log.V(4).Info("error reading from conn", "conn", from.RemoteAddr().String(), "err", err)
-					}
-					close(closeChan)
-					return
-				}
-				log.V(5).Info("read complete", "bytes", nRead)
-			}
-			select {
-			case <-quitChan:
-				return
-			default:
-				n, err := to.Write(buf[0:nRead])
-				if err != nil {
-					opErr, ok := err.(*net.OpError)
-					if err == io.EOF || ok && opErr.Err.Error() == "use of closed network connection" {
-						log.V(4).Info("connection has been closed", "conn", from.RemoteAddr().String())
-					} else {
-						log.V(4).Info("error writing to conn", "conn", to.RemoteAddr().String(), "err", err)
-					}
-					close(closeChan)
-					return
-				}
-				log.V(5).Info("write complete", "bytes", n)
-			}
-		}
-	}()
-	return closeChan
-}
-
-func handleConn(log logr.Logger, cconn net.TCPConn, backends []*Backend) {
+func handleConn(ctx context.Context, log logr.Logger, cconn net.TCPConn, backends []*backend.Backend) {
 	idcs := make([]int, len(backends))
 	for idx := range backends {
 		idcs[idx] = idx
@@ -74,7 +29,7 @@ func handleConn(log logr.Logger, cconn net.TCPConn, backends []*Backend) {
 	for _, idx := range idcs {
 		if backends[idx].Healthy != nil && *backends[idx].Healthy {
 			log.V(4).Info("selecting backend", "backend", backends[idx])
-			backends[idx].HandleConn(cconn)
+			backends[idx].HandleConn(ctx, &cconn)
 			return
 		}
 		log.V(4).Info("skipping unhealthy backend", "backend", backends[idx])
@@ -114,7 +69,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	backends := make([]*Backend, 0)
+	backends := make([]*backend.Backend, 0)
 	for _, be := range backendsFlag {
 		parts := strings.SplitN(be, ":", 2)
 		if len(parts) == 0 {
@@ -135,13 +90,8 @@ func main() {
 				port = parts[1]
 			}
 		}
-		backendAddr, err := net.ResolveTCPAddr("tcp4", fmt.Sprintf("%s:%s", host, port))
-		if err != nil {
-			log.Error(err, "cannot parse backend address", "host", host, "port", port)
-			os.Exit(1)
-		}
 
-		backend := NewBackend(*backendAddr, log)
+		backend := backend.NewBackend("tcp4", fmt.Sprintf("%s:%s", host, port), log)
 		backend.Start(healthInterval)
 		backends = append(backends, &backend)
 	}
@@ -164,6 +114,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error accepting connection: %s", err)
 			continue
 		}
-		go handleConn(log, *conn, backends)
+		ctx, _ := context.WithTimeout(context.Background(), 30*time.Second) // nolint:govet
+		go handleConn(ctx, log, *conn, backends)
 	}
 }
