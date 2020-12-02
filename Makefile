@@ -18,6 +18,10 @@ endif
 
 all: lint build
 
+.PHONY: clean
+clean:
+	rm -rf ./build
+
 .PHONY: lint
 lint: 
 	golangci-lint run
