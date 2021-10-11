@@ -23,7 +23,7 @@ clean:
 	rm -rf ./build
 
 .PHONY: lint
-lint: 
+lint:
 	golangci-lint run
 
 .PHONY: build
