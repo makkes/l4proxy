@@ -1,0 +1,7 @@
+apiVersion: v1
+frontends:
+  - bind: :1313
+    healthInterval: 5
+    backends:
+      - address: localhost:1314
+      - address: localhost:1315
