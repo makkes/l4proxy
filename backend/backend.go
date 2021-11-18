@@ -78,8 +78,8 @@ func proxy(log logr.Logger, to net.Conn, from net.Conn, quitChan <-chan struct{}
 
 type Option func(b *Backend)
 
-func NewBackend(network string, addr string, log logr.Logger, opts ...Option) Backend {
-	b := Backend{
+func NewBackend(network string, addr string, log logr.Logger, opts ...Option) *Backend {
+	b := &Backend{
 		Addr:    addr,
 		Network: network,
 		log:     log,
@@ -87,7 +87,7 @@ func NewBackend(network string, addr string, log logr.Logger, opts ...Option) Ba
 	}
 
 	for _, opt := range opts {
-		opt(&b)
+		opt(b)
 	}
 
 	return b
