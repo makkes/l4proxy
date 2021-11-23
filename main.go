@@ -1,14 +1,10 @@
 package main
 
 import (
-	"encoding/json"
 	goflag "flag"
 	"fmt"
 	"math/rand"
-	"net/http"
 	"os"
-	"runtime"
-	"sync"
 	"time"
 
 	"github.com/go-logr/glogr"
@@ -19,20 +15,51 @@ import (
 	"github.com/makkes/l4proxy/frontend"
 )
 
-func startWebServer(log logr.Logger) {
-	http.HandleFunc("/backends", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			var body map[string]interface{}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				log.V(4).Info("could not unmarshal payload", "err", err.Error())
-				w.WriteHeader(http.StatusBadRequest)
-				fmt.Fprintf(w, "%s\n", err.Error())
-				return
-			}
-			// fmt.Printf("%#v\n", body)
+type L4Proxy struct {
+	cfg       config.Config
+	log       logr.Logger
+	frontends []*frontend.Frontend
+}
+
+func NewL4Proxy(cfg config.Config, log logr.Logger) L4Proxy {
+	return L4Proxy{
+		cfg: cfg,
+		log: log,
+	}
+}
+
+func (p *L4Proxy) Start() {
+	frontends := make([]*frontend.Frontend, 0)
+	for _, feCfg := range p.cfg.Frontends {
+		fe, err := frontend.NewFrontend("tcp", feCfg.Bind, p.log)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error creating frontend: %s\n", err.Error())
+			os.Exit(1)
 		}
-	})
-	http.ListenAndServe("127.0.0.1:1313", nil)
+		for _, beCfg := range feCfg.Backends {
+			if err := fe.AddBackend(beCfg.Address, feCfg.HealthInterval); err != nil {
+				fmt.Fprintf(os.Stderr, "error adding backend '%s': %s\n", beCfg.Address, err.Error())
+				os.Exit(1)
+			}
+		}
+		frontends = append(frontends, &fe)
+	}
+
+	// go startWebServer(log, cfg)
+
+	for _, fe := range frontends {
+		fe.Start()
+	}
+
+	p.frontends = frontends
+
+	p.log.V(5).Info("all frontends running")
+}
+
+func (p *L4Proxy) Stop() {
+	for _, fe := range p.frontends {
+		fe.Stop()
+	}
 }
 
 func main() {
@@ -59,47 +86,11 @@ func main() {
 
 	log := glogr.New()
 
-	debug := os.Getenv("DEBUG")
-	if debug != "" {
-		go func() {
-			log := log.WithName("prof")
-			for range time.Tick(2 * time.Second) {
-				log.Info("profile", "goroutines", runtime.NumGoroutine())
-			}
-		}()
-	}
+	proxy := NewL4Proxy(*cfg, log)
+	proxy.Start()
 
-	go startWebServer(log)
-
-	frontends := make([]frontend.Frontend, 0)
-	for _, feCfg := range cfg.Frontends {
-		fe, err := frontend.NewFrontend("tcp", feCfg.Bind, log)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error creating frontend: %s\n", err.Error())
-			os.Exit(1)
-		}
-		for _, beCfg := range feCfg.Backends {
-			if err := fe.AddBackend(beCfg.Address, feCfg.HealthInterval); err != nil {
-				fmt.Fprintf(os.Stderr, "error adding backend '%s': %s\n", beCfg.Address, err.Error())
-				os.Exit(1)
-			}
-		}
-		frontends = append(frontends, fe)
-	}
-
-	var wg sync.WaitGroup
-
-	for idx := range frontends {
-		wg.Add(1)
-		go func(idx int) {
-			frontends[idx].Start()
-			wg.Done()
-		}(idx)
-	}
-
-	log.Info("all frontends running", "frontends", len(frontends))
-
-	wg.Wait()
-
-	log.Info("all frontends quit")
+	ch := make(chan struct{})
+	<-ch
+	// time.Sleep(5 * time.Second)
+	// 	proxy.Stop()
 }
