@@ -78,19 +78,42 @@ func main() {
 		os.Exit(1)
 	}
 
-	cfg, err := config.Read(configFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "could not read config file: %s\n", err.Error())
-		os.Exit(1)
-	}
-
 	log := glogr.New()
 
-	proxy := NewL4Proxy(*cfg, log)
-	proxy.Start()
+	cfgFileUpdateCh := make(chan struct{})
+
+	go func(updateCh chan<- struct{}) {
+		var lastModTime time.Time
+		ticker := time.NewTicker(3 * time.Second)
+		for range ticker.C {
+			cfgFile, err := os.Stat(configFile)
+			if err != nil {
+				log.Error(err, "failed to stat configuration file for modification checking")
+				continue
+			}
+			if cfgFile.ModTime().After(lastModTime) {
+				lastModTime = cfgFile.ModTime()
+				updateCh <- struct{}{}
+			}
+		}
+	}(cfgFileUpdateCh)
+
+	go func(cfgFileUpdateCh <-chan struct{}) {
+		var proxy L4Proxy
+		for range cfgFileUpdateCh {
+			log.V(2).Info("config file update, reloading configuration")
+			cfg, err := config.Read(configFile)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "could not read config file: %s\n", err.Error())
+				continue
+			}
+			log.Info("stopping proxy")
+			proxy.Stop()
+			proxy = NewL4Proxy(*cfg, log)
+			proxy.Start()
+		}
+	}(cfgFileUpdateCh)
 
 	ch := make(chan struct{})
 	<-ch
-	// time.Sleep(5 * time.Second)
-	// 	proxy.Stop()
 }

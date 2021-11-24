@@ -33,7 +33,7 @@ func NewFrontend(network, bind string, log logr.Logger, opts ...Option) (Fronten
 	f.BindNetwork = network
 	f.BindHost = bindHost
 	f.BindPort = bindPort
-	f.Log = log
+	f.Log = log.WithValues("network", network, "bind", bind)
 
 	for _, opt := range opts {
 		opt(&f)
@@ -88,6 +88,7 @@ func (f *Frontend) Start() {
 		f.Log.Error(err, "cannot start listener", "addr", listenAddr)
 		return
 	}
+	f.Log.V(4).Info("listener started")
 
 	go func() {
 		for {
@@ -109,6 +110,7 @@ func (f *Frontend) Stop() {
 			be.Stop()
 		}
 	}
+	f.Log.V(4).Info("frontend stopped")
 }
 
 func handleConn(ctx context.Context, log logr.Logger, cconn net.Conn, backends []*backend.Backend) {
