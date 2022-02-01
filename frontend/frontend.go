@@ -77,16 +77,14 @@ func (f *Frontend) AddBackend(be string, healthInterval int) error {
 	return nil
 }
 
-func (f *Frontend) Start() {
+func (f *Frontend) Start() error {
 	listenAddr, err := net.ResolveTCPAddr("tcp4", fmt.Sprintf("%s:%s", f.BindHost, f.BindPort))
 	if err != nil {
-		f.Log.Error(err, "cannot parse listening address", "host", f.BindHost, "port", f.BindPort)
-		return
+		return fmt.Errorf("cannot parse listening address %s:%s: %w", f.BindHost, f.BindPort, err)
 	}
 	f.listener, err = net.ListenTCP("tcp4", listenAddr)
 	if err != nil {
-		f.Log.Error(err, "cannot start listener", "addr", listenAddr)
-		return
+		return fmt.Errorf("cannot start listener at %s: %w", listenAddr, err)
 	}
 	f.Log.V(4).Info("listener started")
 
@@ -101,6 +99,8 @@ func (f *Frontend) Start() {
 			go handleConn(ctx, f.Log, conn, f.Backends)
 		}
 	}()
+
+	return nil
 }
 
 func (f *Frontend) Stop() {
