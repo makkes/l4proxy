@@ -45,15 +45,23 @@ func (p *L4Proxy) Start() {
 		frontends = append(frontends, &fe)
 	}
 
-	// go startWebServer(log, cfg)
+	var lastErr error
 
 	for _, fe := range frontends {
-		fe.Start()
+		if err := fe.Start(); err != nil {
+			lastErr = err
+			p.log.Error(err, "failed to start frontend", "host", fe.BindHost, "port", fe.BindPort)
+		}
 	}
 
 	p.frontends = frontends
 
-	p.log.Info("all frontends running")
+	if lastErr == nil {
+		p.log.Info("all frontends running")
+		return
+	}
+
+	p.log.Info("some frontends failed to start")
 }
 
 func (p *L4Proxy) Stop() {
@@ -103,27 +111,22 @@ func main() {
 
 	go func(cfgFileUpdateCh <-chan string) {
 		proxies := make(map[string]*L4Proxy)
-		for cfgFileUpdate := range cfgFileUpdateCh {
-			for _, configFile := range configFiles {
-				if configFile != cfgFileUpdate {
-					continue
-				}
-				cfgFileLog := log.WithValues("config_file", configFile)
-				cfgFileLog.V(2).Info("config file update, reloading configuration")
-				cfg, err := config.Read(configFile)
-				if err != nil {
-					cfgFileLog.Error(err, "could not read config file")
-					continue
-				}
-				cfgFileLog.Info("restarting proxy")
-				p := proxies[configFile]
-				if p != nil {
-					p.Stop()
-				}
-				newProxy := NewL4Proxy(*cfg, cfgFileLog)
-				proxies[configFile] = &newProxy
-				newProxy.Start()
+		for configFile := range cfgFileUpdateCh {
+			cfgFileLog := log.WithValues("config_file", configFile)
+			cfgFileLog.V(2).Info("config file update, reloading configuration")
+			cfg, err := config.Read(configFile)
+			if err != nil {
+				cfgFileLog.Error(err, "could not read config file")
+				continue
 			}
+			cfgFileLog.Info("restarting proxy")
+			p := proxies[configFile]
+			if p != nil {
+				p.Stop()
+			}
+			newProxy := NewL4Proxy(*cfg, cfgFileLog)
+			proxies[configFile] = &newProxy
+			newProxy.Start()
 		}
 	}(cfgFileUpdateCh)
 
