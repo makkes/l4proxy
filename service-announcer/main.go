@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/go-logr/logr"
 	l4proxyconfig "github.com/makkes/l4proxy/config"
@@ -21,26 +22,31 @@ import (
 )
 
 type Reconciler struct {
-	client         client.Client
-	healthInterval int
-	logger         logr.Logger
-	l4ProxyConfig  string
-	bind           string
+	client              client.Client
+	healthInterval      int
+	logger              logr.Logger
+	l4ProxyConfig       string
+	bind                string
+	skipAnnotationKey   string
+	skipAnnotationValue string
 }
 
 func (r Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
 	var svc corev1.Service
 	log := r.logger
 	if err := r.client.Get(ctx, req.NamespacedName, &svc); err != nil {
-		if !errors.IsNotFound(err) {
-			return reconcile.Result{}, err
-		}
-	} else {
-		log = log.WithValues("namespace", svc.GetNamespace(), "name", svc.GetName())
-		if svc.Spec.Type != corev1.ServiceTypeLoadBalancer {
-			log.Info("skipping non-LoadBalancer service")
+		if errors.IsNotFound(err) {
+			// Service is gone, just carry on
 			return reconcile.Result{}, nil
 		}
+		return reconcile.Result{}, err
+	}
+
+	log = log.WithValues("namespace", svc.GetNamespace(), "name", svc.GetName())
+
+	if svc.Spec.Type != corev1.ServiceTypeLoadBalancer {
+		log.Info("skipping non-LoadBalancer service")
+		return reconcile.Result{}, nil
 	}
 
 	var svcs corev1.ServiceList
@@ -52,6 +58,9 @@ func (r Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (recon
 
 	for _, svc := range svcs.Items {
 		if svc.DeletionTimestamp != nil && !svc.DeletionTimestamp.IsZero() {
+			continue
+		}
+		if ann, ok := svc.GetAnnotations()[r.skipAnnotationKey]; ok && ann == r.skipAnnotationValue {
 			continue
 		}
 		for _, ingress := range svc.Status.LoadBalancer.Ingress {
@@ -115,6 +124,7 @@ func main() {
 	var (
 		l4ProxyConfig string
 		bind          string
+		skipServices  string
 		setupLog      = ctrl.Log.WithName("setup")
 	)
 
@@ -130,6 +140,8 @@ func main() {
 	flags := flag.NewFlagSet("main", flag.ExitOnError)
 	flags.StringVar(&l4ProxyConfig, "l4proxy-config", "", "The path of the l4proxy config file.")
 	flags.StringVar(&bind, "bind", "", "The address that l4proxy will bind to")
+	flags.StringVar(&skipServices, "skip-services", "", "Annotation key/value pair used to identify services to be "+
+		"left out of the proxy configuration (key=value)")
 	flags.Parse(os.Args[1:])
 
 	if l4ProxyConfig == "" {
@@ -137,12 +149,26 @@ func main() {
 		os.Exit(1)
 	}
 
+	annKey := ""
+	annVal := ""
+	ann := strings.Split(skipServices, "=")
+	if len(ann) > 0 {
+		if len(ann) != 2 {
+			setupLog.Error(fmt.Errorf("wrong service skip value"), "--skip-services parameter must be of the form key=value")
+			os.Exit(1)
+		}
+		annKey = ann[0]
+		annVal = ann[1]
+	}
+
 	err = builder.ControllerManagedBy(mgr).
 		For(&corev1.Service{}).
 		Complete(&Reconciler{
-			l4ProxyConfig:  l4ProxyConfig,
-			bind:           bind,
-			healthInterval: 5,
+			l4ProxyConfig:       l4ProxyConfig,
+			bind:                bind,
+			healthInterval:      5,
+			skipAnnotationKey:   annKey,
+			skipAnnotationValue: annVal,
 		})
 	if err != nil {
 		panic(err)
