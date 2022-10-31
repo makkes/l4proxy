@@ -27,11 +27,15 @@ lint:
 	golangci-lint run
 
 .PHONY: build
-build: l4proxy-$(GIT_VERSION)-$(GOOS)-$(GOARCH)
+build: l4proxy-$(GIT_VERSION)-$(GOOS)-$(GOARCH) service-announcer-$(GIT_VERSION)-$(GOOS)-$(GOARCH)
 
 .PHONY: l4proxy-$(GIT_VERSION)-$(GOOS)-$(GOARCH)
 l4proxy-$(GIT_VERSION)-$(GOOS)-$(GOARCH):
 	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o ./build/l4proxy-$(GIT_VERSION)-$(GOOS)-$(GOARCH)
+
+.PHONY: service-announcer-$(GIT_VERSION)-$(GOOS)-$(GOARCH)
+service-announcer-$(GIT_VERSION)-$(GOOS)-$(GOARCH):
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o ./build/service-announcer-$(GIT_VERSION)-$(GOOS)-$(GOARCH) ./service-announcer
 
 .PHONY: release
 release:
