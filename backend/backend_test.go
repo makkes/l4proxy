@@ -18,7 +18,7 @@ import (
 func TestNewBackend(t *testing.T) {
 	network := "tcp4"
 	addr := "1.2.3.4:5544"
-	b := NewBackend(network, addr, nil)
+	b := NewBackend(network, addr, logr.Discard())
 	require.Equal(t, addr, b.Addr)
 	require.Equal(t, network, b.Network)
 }
@@ -27,7 +27,7 @@ func TestNewBackendWithOptions(t *testing.T) {
 	f := func(log logr.Logger, to net.Conn, from net.Conn, quitChan <-chan struct{}) <-chan struct{} {
 		return nil
 	}
-	b := NewBackend("", "", nil, WithProxyFunc(f))
+	b := NewBackend("", "", logr.Discard(), WithProxyFunc(f))
 
 	require.Equal(t, fmt.Sprintf("%p", f), fmt.Sprintf("%p", b.proxy))
 }
