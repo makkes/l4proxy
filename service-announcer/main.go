@@ -152,9 +152,9 @@ func main() {
 	annKey := ""
 	annVal := ""
 	ann := strings.Split(skipServices, "=")
-	if len(ann) > 0 {
+	if len(ann) > 0 && !(len(ann) == 1 && ann[0] == "") {
 		if len(ann) != 2 {
-			setupLog.Error(fmt.Errorf("wrong service skip value"), "--skip-services parameter must be of the form key=value")
+			setupLog.Error(fmt.Errorf("wrong service skip value %q", skipServices), "--skip-services parameter must be of the form key=value")
 			os.Exit(1)
 		}
 		annKey = ann[0]
