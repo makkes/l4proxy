@@ -92,10 +92,13 @@ func (f *Frontend) Start() error {
 		for {
 			conn, err := f.listener.Accept()
 			if err != nil {
-				f.Log.Error(err, "Error accepting connection")
+				if strings.Contains(err.Error(), "use of closed network connection") {
+					return // assume this is a legit action caused by calling "Close" on the Frontend.
+				}
+				f.Log.Error(err, "Error accepting connection", "err", fmt.Sprintf("%#v", err))
 				return
 			}
-			ctx, _ := context.WithTimeout(context.Background(), 30*time.Second) // nolint:govet // this is an endless loop
+			ctx, _ := context.WithTimeout(context.Background(), 30*time.Second) //nolint:govet // this is an endless loop
 			go handleConn(ctx, f.Log, conn, f.Backends)
 		}
 	}()

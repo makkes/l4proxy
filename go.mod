@@ -1,6 +1,6 @@
 module github.com/makkes/l4proxy
 
-go 1.17
+go 1.19
 
 require (
 	github.com/go-logr/glogr v0.2.0

@@ -90,7 +90,31 @@ func main() {
 
 	cfgFileUpdateCh := make(chan string)
 
+	go func(cfgFileUpdateCh <-chan string) {
+		proxies := make(map[string]*L4Proxy)
+		for configFile := range cfgFileUpdateCh {
+			cfgFileLog := log.WithValues("config_file", configFile)
+			cfgFileLog.V(2).Info("config file update, reloading configuration")
+			cfg, err := config.Read(configFile)
+			if err != nil {
+				cfgFileLog.Error(err, "could not read config file")
+				continue
+			}
+			p := proxies[configFile]
+			if p != nil {
+				cfgFileLog.Info("restarting proxy")
+				p.Stop()
+			} else {
+				cfgFileLog.Info("starting proxy")
+			}
+			newProxy := NewL4Proxy(*cfg, cfgFileLog)
+			proxies[configFile] = &newProxy
+			newProxy.Start()
+		}
+	}(cfgFileUpdateCh)
+
 	for _, configFile := range configFiles {
+		cfgFileUpdateCh <- configFile // initial message to start all proxies
 		cfgFileLog := log.WithValues("config_file", configFile)
 		go func(updateCh chan<- string, configFile string, log logr.Logger) {
 			var lastModTime time.Time
@@ -102,33 +126,14 @@ func main() {
 					continue
 				}
 				if cfgFile.ModTime().After(lastModTime) {
+					if !lastModTime.IsZero() {
+						updateCh <- configFile
+					}
 					lastModTime = cfgFile.ModTime()
-					updateCh <- configFile
 				}
 			}
 		}(cfgFileUpdateCh, configFile, cfgFileLog)
 	}
-
-	go func(cfgFileUpdateCh <-chan string) {
-		proxies := make(map[string]*L4Proxy)
-		for configFile := range cfgFileUpdateCh {
-			cfgFileLog := log.WithValues("config_file", configFile)
-			cfgFileLog.V(2).Info("config file update, reloading configuration")
-			cfg, err := config.Read(configFile)
-			if err != nil {
-				cfgFileLog.Error(err, "could not read config file")
-				continue
-			}
-			cfgFileLog.Info("restarting proxy")
-			p := proxies[configFile]
-			if p != nil {
-				p.Stop()
-			}
-			newProxy := NewL4Proxy(*cfg, cfgFileLog)
-			proxies[configFile] = &newProxy
-			newProxy.Start()
-		}
-	}(cfgFileUpdateCh)
 
 	ch := make(chan struct{})
 	<-ch
