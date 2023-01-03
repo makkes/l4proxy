@@ -24,6 +24,10 @@ type Frontend struct {
 
 type Option func(f *Frontend)
 
+const (
+	interfacePrefix = "@"
+)
+
 func NewFrontend(network, bind string, log logr.Logger, opts ...Option) (Frontend, error) {
 	var f Frontend
 	bindHost, bindPort, err := parseHostPort(bind)
@@ -56,12 +60,40 @@ func parseHostPort(hp string) (string, string, error) {
 		if parts[1] == "" {
 			return "", "", fmt.Errorf("bind spec '%s' is missing a port", hp)
 		} else {
-			host = parts[0]
+			if strings.HasPrefix(parts[0], interfacePrefix) {
+				var err error
+				host, err = hostFromInterface(strings.TrimPrefix(parts[0], interfacePrefix))
+				if err != nil {
+					return "", "", fmt.Errorf("failed getting IP address from interface: %w", err)
+				}
+			} else {
+				host = parts[0]
+			}
 			port = parts[1]
 		}
 	}
 
 	return host, port, nil
+}
+
+func hostFromInterface(ifName string) (string, error) {
+	inf, err := net.InterfaceByName(ifName)
+	if err != nil {
+		return "", fmt.Errorf("failed getting interface by name %q: %w", ifName, err)
+	}
+	addrs, err := inf.Addrs()
+	if err != nil {
+		return "", fmt.Errorf("failed getting addresses of interface %q: %w", inf.Name, err)
+	}
+	if len(addrs) == 0 {
+		return "", fmt.Errorf("interface %q has no address", inf.Name)
+	}
+
+	ipNet, ok := addrs[0].(*net.IPNet)
+	if !ok {
+		return "", fmt.Errorf("address %q is not an IP network address", addrs[0].String())
+	}
+	return ipNet.IP.String(), nil
 }
 
 func (f *Frontend) AddBackend(be string, healthInterval int) error {
