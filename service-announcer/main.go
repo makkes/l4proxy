@@ -5,13 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/go-logr/logr"
-	l4proxyconfig "github.com/makkes/l4proxy/config"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -19,16 +18,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	l4proxyconfig "github.com/makkes/l4proxy/config"
 )
 
 type Reconciler struct {
-	client              client.Client
-	healthInterval      int
-	logger              logr.Logger
-	l4ProxyConfig       string
-	bind                string
-	skipAnnotationKey   string
-	skipAnnotationValue string
+	client         client.Client
+	healthInterval int
+	logger         logr.Logger
+	l4ProxyConfig  string
+	bind           string
+	selector       labels.Selector
 }
 
 func (r Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
@@ -42,15 +42,13 @@ func (r Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (recon
 		return reconcile.Result{}, err
 	}
 
-	log = log.WithValues("namespace", svc.GetNamespace(), "name", svc.GetName())
-
 	if svc.Spec.Type != corev1.ServiceTypeLoadBalancer {
-		log.Info("skipping non-LoadBalancer service")
+		log.Info("skipping non-LoadBalancer service", "namespace", svc.Namespace, "name", svc.Name)
 		return reconcile.Result{}, nil
 	}
 
 	var svcs corev1.ServiceList
-	if err := r.client.List(ctx, &svcs); err != nil {
+	if err := r.client.List(ctx, &svcs, client.MatchingLabelsSelector{Selector: r.selector}); err != nil {
 		return reconcile.Result{}, err
 	}
 
@@ -58,9 +56,6 @@ func (r Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (recon
 
 	for _, svc := range svcs.Items {
 		if svc.DeletionTimestamp != nil && !svc.DeletionTimestamp.IsZero() {
-			continue
-		}
-		if ann, ok := svc.GetAnnotations()[r.skipAnnotationKey]; ok && ann == r.skipAnnotationValue {
 			continue
 		}
 		for _, ingress := range svc.Status.LoadBalancer.Ingress {
@@ -93,7 +88,7 @@ func (r Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (recon
 		}
 	}
 
-	out, err := os.OpenFile(r.l4ProxyConfig, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	out, err := os.OpenFile(r.l4ProxyConfig, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("could not open output file: %w", err)
 	}
@@ -110,22 +105,22 @@ func (r Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (recon
 	return reconcile.Result{}, nil
 }
 
-func (r *Reconciler) InjectClient(c client.Client) error {
+func (r *Reconciler) InjectClient(c client.Client) error { //nolint:unparam // this is an interface implementation
 	r.client = c
 	return nil
 }
 
-func (r *Reconciler) InjectLogger(l logr.Logger) error {
+func (r *Reconciler) InjectLogger(l logr.Logger) error { //nolint:unparam // this is an interface implementation
 	r.logger = l
 	return nil
 }
 
 func main() {
 	var (
-		l4ProxyConfig string
-		bind          string
-		skipServices  string
-		setupLog      = ctrl.Log.WithName("setup")
+		l4ProxyConfigFlag string
+		bindFlag          string
+		selectorFlag      string
+		setupLog          = ctrl.Log.WithName("setup")
 	)
 
 	zap.New()
@@ -138,37 +133,31 @@ func main() {
 	}
 
 	flags := flag.NewFlagSet("main", flag.ExitOnError)
-	flags.StringVar(&l4ProxyConfig, "l4proxy-config", "", "The path of the l4proxy config file.")
-	flags.StringVar(&bind, "bind", "", "The address that l4proxy will bind to")
-	flags.StringVar(&skipServices, "skip-services", "", "Annotation key/value pair used to identify services to be "+
-		"left out of the proxy configuration (key=value)")
+	flags.StringVar(&l4ProxyConfigFlag, "l4proxy-config", "", "The path of the l4proxy config file.")
+	flags.StringVar(&bindFlag, "bind", "", "The address that l4proxy will bind to")
+	flags.StringVar(&selectorFlag, "label-selector", "", "Label selector used to select Services to"+
+		"be included in the proxy configuration. See https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors "+
+		"for documentation on its syntax.")
 	flags.Parse(os.Args[1:])
 
-	if l4ProxyConfig == "" {
+	if l4ProxyConfigFlag == "" {
 		setupLog.Error(fmt.Errorf("l4proxy config file not set"), "--l4proxy-config cannot be empty")
 		os.Exit(1)
 	}
 
-	annKey := ""
-	annVal := ""
-	ann := strings.Split(skipServices, "=")
-	if len(ann) > 0 && !(len(ann) == 1 && ann[0] == "") {
-		if len(ann) != 2 {
-			setupLog.Error(fmt.Errorf("wrong service skip value %q", skipServices), "--skip-services parameter must be of the form key=value")
-			os.Exit(1)
-		}
-		annKey = ann[0]
-		annVal = ann[1]
+	selector, err := labels.Parse(selectorFlag)
+	if err != nil {
+		setupLog.Error(err, "failed parsing --label-selector flag")
+		os.Exit(1)
 	}
 
 	err = builder.ControllerManagedBy(mgr).
 		For(&corev1.Service{}).
 		Complete(&Reconciler{
-			l4ProxyConfig:       l4ProxyConfig,
-			bind:                bind,
-			healthInterval:      5,
-			skipAnnotationKey:   annKey,
-			skipAnnotationValue: annVal,
+			l4ProxyConfig:  l4ProxyConfigFlag,
+			bind:           bindFlag,
+			healthInterval: 5,
+			selector:       selector,
 		})
 	if err != nil {
 		panic(err)
