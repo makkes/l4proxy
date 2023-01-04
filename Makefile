@@ -2,6 +2,7 @@
 
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
+ALL_GO_SUBMODULES := $(shell PATH='$(PATH)'; find -mindepth 2 -maxdepth 2 -name go.mod -printf '%P\n' | sort)
 
 GIT_COMMIT := $(shell git rev-parse "HEAD^{commit}")
 ifneq ($(shell git status --porcelain 2>/dev/null; echo $$?), 0)
@@ -23,15 +24,18 @@ clean:
 	rm -rf ./build
 
 .PHONY: lint
-lint:
-	golangci-lint run
+lint: $(addprefix lint.,$(ALL_GO_SUBMODULES:/go.mod=))
+
+.PHONY: lint.%
+lint.%:
+	cd $* && golangci-lint run
 
 .PHONY: build
 build: l4proxy-$(GIT_VERSION)-$(GOOS)-$(GOARCH) service-announcer-$(GIT_VERSION)-$(GOOS)-$(GOARCH)
 
 .PHONY: l4proxy-$(GIT_VERSION)-$(GOOS)-$(GOARCH)
 l4proxy-$(GIT_VERSION)-$(GOOS)-$(GOARCH):
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o ./build/l4proxy-$(GIT_VERSION)-$(GOOS)-$(GOARCH)
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o ./build/l4proxy-$(GIT_VERSION)-$(GOOS)-$(GOARCH) ./l4proxy
 
 .PHONY: service-announcer-$(GIT_VERSION)-$(GOOS)-$(GOARCH)
 service-announcer-$(GIT_VERSION)-$(GOOS)-$(GOARCH):
@@ -45,5 +49,8 @@ release:
 	GOOS=linux GOARCH=arm make build
 
 .PHONY: test
-test:
-	go test -race ./...
+test: $(addprefix test.,$(ALL_GO_SUBMODULES:/go.mod=))
+
+.PHONY: test.%
+test.%:
+	cd $* && go test -race ./...
