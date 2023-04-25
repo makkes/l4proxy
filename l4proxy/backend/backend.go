@@ -11,7 +11,7 @@ import (
 	"github.com/go-logr/logr"
 )
 
-type proxyFunc func(log logr.Logger, to net.Conn, from net.Conn, quitChan <-chan struct{}) <-chan struct{}
+type proxyFunc func(log logr.Logger, to net.Conn, from net.Conn, quitChan <-chan struct{}, keepaliveChan chan<- struct{}) <-chan struct{}
 
 func BoolPtr(b bool) *bool {
 	return &b
@@ -28,7 +28,7 @@ type Backend struct {
 	mux     sync.RWMutex
 }
 
-func proxy(log logr.Logger, to net.Conn, from net.Conn, quitChan <-chan struct{}) <-chan struct{} {
+func proxy(log logr.Logger, to net.Conn, from net.Conn, quitChan <-chan struct{}, keepaliveChan chan<- struct{}) <-chan struct{} {
 	closeChan := make(chan struct{})
 	log = log.WithName(fmt.Sprintf("%s->%s", from.RemoteAddr().String(), to.RemoteAddr().String()))
 	go func() {
@@ -73,6 +73,7 @@ func proxy(log logr.Logger, to net.Conn, from net.Conn, quitChan <-chan struct{}
 				}
 				log.V(5).Info("write complete", "bytes", n)
 			}
+			keepaliveChan <- struct{}{}
 		}
 	}()
 	return closeChan
@@ -133,7 +134,7 @@ func (b *Backend) Stop() {
 	close(b.stopCh)
 }
 
-func (b *Backend) HandleConn(ctx context.Context, c net.Conn) error {
+func (b *Backend) HandleConn(ctx context.Context, c net.Conn, keepaliveChan chan<- struct{}) error {
 	b.log.V(3).Info("handling incoming connection", "remote", c.RemoteAddr().String())
 	defer c.Close()
 	var dialer net.Dialer
@@ -144,8 +145,8 @@ func (b *Backend) HandleConn(ctx context.Context, c net.Conn) error {
 	}
 
 	quitChan := make(chan struct{})
-	beDirChan := b.proxy(b.log, beconn, c, quitChan)
-	clDirChan := b.proxy(b.log, c, beconn, quitChan)
+	beDirChan := b.proxy(b.log, beconn, c, quitChan, keepaliveChan)
+	clDirChan := b.proxy(b.log, c, beconn, quitChan, keepaliveChan)
 
 	defer func() {
 		// close connections and wait for goroutines to shut down

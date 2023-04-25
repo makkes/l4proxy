@@ -24,7 +24,7 @@ func TestNewBackend(t *testing.T) {
 }
 
 func TestNewBackendWithOptions(t *testing.T) {
-	f := func(log logr.Logger, to net.Conn, from net.Conn, quitChan <-chan struct{}) <-chan struct{} {
+	f := func(log logr.Logger, to net.Conn, from net.Conn, quitChan <-chan struct{}, keepaliveChan chan<- struct{}) <-chan struct{} {
 		return nil
 	}
 	b := NewBackend("", "", logr.Discard(), WithProxyFunc(f))
@@ -77,7 +77,8 @@ func TestTCPConnectionHandling(t *testing.T) {
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	b.HandleConn(ctx, clientOut)
+	keepaliveChan := make(chan struct{}, 2)
+	b.HandleConn(ctx, clientOut, keepaliveChan)
 	require.Equal(t, goroutinesStart, runtime.NumGoroutine(), "unexpected number of goroutines")
 }
 
@@ -125,6 +126,8 @@ func TestUDPConnectionHandling(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	b.HandleConn(ctx, clientOut)
+
+	keepaliveChan := make(chan struct{}, 2)
+	b.HandleConn(ctx, clientOut, keepaliveChan)
 	require.Equal(t, goroutinesStart, runtime.NumGoroutine(), "unexpected number of goroutines")
 }

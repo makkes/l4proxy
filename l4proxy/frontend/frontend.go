@@ -130,8 +130,34 @@ func (f *Frontend) Start() error {
 				f.Log.Error(err, "Error accepting connection", "err", fmt.Sprintf("%#v", err))
 				return
 			}
-			ctx, _ := context.WithTimeout(context.Background(), 30*time.Second) //nolint:govet // this is an endless loop
-			go handleConn(ctx, f.Log, conn, f.Backends)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			quitCh := make(chan struct{})
+			keepaliveChan := make(chan struct{})
+
+			go func(quitCh chan struct{}) {
+				handleConn(ctx, f.Log, conn, keepaliveChan, f.Backends)
+				close(quitCh)
+			}(quitCh)
+
+			go func() {
+				keepaliveTimeout := 30 * time.Second
+				timer := time.NewTimer(keepaliveTimeout)
+				for {
+					select {
+					case <-timer.C:
+						f.Log.V(5).Info("connection timed out, closing", "conn", conn.RemoteAddr())
+						cancel()
+						return
+					case <-keepaliveChan:
+						f.Log.V(5).Info("keeping connection alive", "conn", conn.RemoteAddr())
+						if !timer.Stop() {
+							<-timer.C
+						}
+						timer.Reset(keepaliveTimeout)
+					}
+				}
+			}()
 		}
 	}()
 
@@ -148,7 +174,7 @@ func (f *Frontend) Stop() {
 	f.Log.V(4).Info("frontend stopped")
 }
 
-func handleConn(ctx context.Context, log logr.Logger, cconn net.Conn, backends []*backend.Backend) {
+func handleConn(ctx context.Context, log logr.Logger, cconn net.Conn, keepaliveChan chan<- struct{}, backends []*backend.Backend) {
 	idcs := make([]int, len(backends))
 	for idx := range backends {
 		idcs[idx] = idx
@@ -159,7 +185,7 @@ func handleConn(ctx context.Context, log logr.Logger, cconn net.Conn, backends [
 	for _, idx := range idcs {
 		if backends[idx].IsHealthy() {
 			log.V(4).Info("selecting backend", "backend", backends[idx])
-			if err := backends[idx].HandleConn(ctx, cconn); err != nil {
+			if err := backends[idx].HandleConn(ctx, cconn, keepaliveChan); err != nil {
 				log.Error(err, "error handling connection", "client", cconn.RemoteAddr().String(), "backend_net", "backend_addr", backends[idx].Network, backends[idx].Addr)
 			}
 			return
