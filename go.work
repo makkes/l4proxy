@@ -3,5 +3,5 @@ go 1.19
 use (
 	./l4proxy
 	./cmd/service-announcer
-        ./cmd/l4proxy
+	./cmd/l4proxy
 )
