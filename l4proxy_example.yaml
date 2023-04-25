@@ -19,6 +19,6 @@ frontends:
   # bind: "@lo:1313"
   - bind: "@lo:1313"
     healthInterval: 5
+    timeout: 10s
     backends:
       - address: localhost:1314
-      - address: localhost:1315

@@ -31,7 +31,9 @@ func NewL4Proxy(cfg config.Config, log logr.Logger) L4Proxy {
 func (p *L4Proxy) Start() {
 	frontends := make([]*frontend.Frontend, 0)
 	for _, feCfg := range p.cfg.Frontends {
-		fe, err := frontend.NewFrontend("tcp", feCfg.Bind, p.log)
+		fe, err := frontend.NewFrontend("tcp", feCfg.Bind, p.log,
+			frontend.WithTimeout(feCfg.Timeout),
+		)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error creating frontend: %s\n", err.Error())
 			os.Exit(1)

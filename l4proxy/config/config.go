@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -22,9 +23,10 @@ type Config struct {
 }
 
 type Frontend struct {
-	Bind           string    `yaml:"bind" json:"bind"`
-	Backends       []Backend `yaml:"backends" json:"backends"`
-	HealthInterval int       `yaml:"healthInterval" json:"healthInterval"`
+	Bind           string        `yaml:"bind" json:"bind"`
+	Backends       []Backend     `yaml:"backends" json:"backends"`
+	HealthInterval int           `yaml:"healthInterval" json:"healthInterval"`
+	Timeout        time.Duration `yaml:"timeout" json:"timeout"`
 }
 
 type Backend struct {
