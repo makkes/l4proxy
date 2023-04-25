@@ -1,5 +1,8 @@
 .DEFAULT_GOAL := all
 
+GORELEASER_DEBUG ?= false
+GORELEASER_PARALLELISM ?= $(shell nproc --ignore=1)
+
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 ALL_GO_SUBMODULES := $(shell PATH='$(PATH)'; find -mindepth 2 -maxdepth 2 -name go.mod -printf '%P\n' | sort)
@@ -17,11 +20,7 @@ else
 endif
 
 
-all: lint build
-
-.PHONY: clean
-clean:
-	rm -rf ./build
+all: lint build-snapshot
 
 .PHONY: lint
 lint: $(addprefix lint.,$(ALL_GO_SUBMODULES:/go.mod=))
@@ -30,29 +29,31 @@ lint: $(addprefix lint.,$(ALL_GO_SUBMODULES:/go.mod=))
 lint.%:
 	cd $* && golangci-lint run
 
-.PHONY: build
-build: l4proxy service-announcer
+.PHONY: build-snapshot
+build-snapshot:
+	goreleaser --debug=$(GORELEASER_DEBUG) \
+		build \
+		--snapshot \
+		--clean \
+		--parallelism=$(GORELEASER_PARALLELISM) \
+		--single-target \
+		--skip-post-hooks
 
-.PHONY: l4proxy
-l4proxy: l4proxy-$(GIT_VERSION)-$(GOOS)-$(GOARCH)
-
-.PHONY: service-announcer
-service-announcer: service-announcer-$(GIT_VERSION)-$(GOOS)-$(GOARCH)
-
-.PHONY: l4proxy-$(GIT_VERSION)-$(GOOS)-$(GOARCH)
-l4proxy-$(GIT_VERSION)-$(GOOS)-$(GOARCH):
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o ./build/l4proxy-$(GIT_VERSION)-$(GOOS)-$(GOARCH) ./cmd/l4proxy
-
-.PHONY: service-announcer-$(GIT_VERSION)-$(GOOS)-$(GOARCH)
-service-announcer-$(GIT_VERSION)-$(GOOS)-$(GOARCH):
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o ./build/service-announcer-$(GIT_VERSION)-$(GOOS)-$(GOARCH) ./cmd/service-announcer
+.PHONY: release-snapshot
+release-snapshot:
+	goreleaser --debug=$(GORELEASER_DEBUG) \
+		release \
+		--snapshot \
+		--clean \
+		--parallelism=$(GORELEASER_PARALLELISM) \
+		--skip-publish
 
 .PHONY: release
 release:
-	GOOS=linux GOARCH=amd64 make build
-	GOOS=darwin GOARCH=amd64 make build
-	GOOS=linux GOARCH=arm64 make build
-	GOOS=linux GOARCH=arm make build
+	goreleaser --debug=$(GORELEASER_DEBUG) \
+		release \
+		--clean \
+		--parallelism=$(GORELEASER_PARALLELISM)
 
 .PHONY: test
 test: $(addprefix test.,$(ALL_GO_SUBMODULES:/go.mod=))
