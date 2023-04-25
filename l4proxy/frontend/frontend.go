@@ -19,13 +19,21 @@ type Frontend struct {
 	BindPort    string
 	Log         logr.Logger
 	Backends    []*backend.Backend
+	timeout     time.Duration
 	listener    net.Listener
 }
 
 type Option func(f *Frontend)
 
+func WithTimeout(t time.Duration) Option {
+	return func(f *Frontend) {
+		f.timeout = t
+	}
+}
+
 const (
-	interfacePrefix = "@"
+	interfacePrefix         = "@"
+	defaultKeepaliveTimeout = 30 * time.Second
 )
 
 func NewFrontend(network, bind string, log logr.Logger, opts ...Option) (Frontend, error) {
@@ -120,6 +128,11 @@ func (f *Frontend) Start() error {
 	}
 	f.Log.V(4).Info("listener started")
 
+	keepaliveTimeout := f.timeout
+	if keepaliveTimeout == 0 {
+		keepaliveTimeout = defaultKeepaliveTimeout
+	}
+
 	go func() {
 		for {
 			conn, err := f.listener.Accept()
@@ -141,7 +154,6 @@ func (f *Frontend) Start() error {
 			}(quitCh)
 
 			go func() {
-				keepaliveTimeout := 30 * time.Second
 				timer := time.NewTimer(keepaliveTimeout)
 				for {
 					select {
