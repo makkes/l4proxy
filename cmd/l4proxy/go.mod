@@ -12,6 +12,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/makkes/l4proxy => ../../l4proxy
+replace github.com/makkes/l4proxy => ../..
 
 go 1.19
