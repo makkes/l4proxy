@@ -4,12 +4,14 @@ go 1.19
 
 require (
 	github.com/go-logr/logr v1.2.4
-	github.com/makkes/l4proxy v0.3.0
+	github.com/makkes/l4proxy v0.0.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.26.1
 	k8s.io/apimachinery v0.27.1
 	sigs.k8s.io/controller-runtime v0.14.6
 )
+
+replace github.com/makkes/l4proxy => ../..
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect

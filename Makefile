@@ -5,7 +5,7 @@ GORELEASER_PARALLELISM ?= $(shell nproc --ignore=1)
 
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
-ALL_GO_SUBMODULES := $(shell PATH='$(PATH)'; find -mindepth 2 -maxdepth 2 -name go.mod -printf '%P\n' | sort)
+GO_MODULES=$(shell find . -mindepth 1 -maxdepth 4 -type f -name 'go.mod' | sed 's|/[^/]*$$||' | sort -u | tr / :)
 
 GIT_COMMIT := $(shell git rev-parse "HEAD^{commit}")
 ifneq ($(shell git status --porcelain 2>/dev/null; echo $$?), 0)
@@ -23,11 +23,28 @@ endif
 all: lint build-snapshot
 
 .PHONY: lint
-lint: $(addprefix lint.,$(ALL_GO_SUBMODULES:/go.mod=))
+lint:
+	$(MAKE) $(addprefix lint-,$(GO_MODULES))
 
-.PHONY: lint.%
-lint.%:
-	cd $* && golangci-lint run
+.PHONY: lint-%
+lint-%:
+	cd $(subst :,/,$*) && golangci-lint run
+
+.PHONY: test
+test:
+	$(MAKE) $(addprefix test-,$(GO_MODULES))
+
+.PHONY: tidy
+tidy:
+	$(MAKE) $(addprefix tidy-,$(GO_MODULES))
+
+.PHONY: tidy-%
+tidy-%:
+	cd $(subst :,/,$*) && go mod tidy
+
+.PHONY: test-%
+test-%:
+	cd $(subst :,/,$*) && go test -race ./...
 
 .PHONY: build-snapshot
 build-snapshot:
@@ -54,10 +71,3 @@ release:
 		release \
 		--clean \
 		--parallelism=$(GORELEASER_PARALLELISM)
-
-.PHONY: test
-test: $(addprefix test.,$(ALL_GO_SUBMODULES:/go.mod=))
-
-.PHONY: test.%
-test.%:
-	cd $* && go test -race ./...
