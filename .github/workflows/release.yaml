@@ -17,7 +17,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install asdf and tools
-        uses: asdf-vm/actions/install@v2
+        uses: asdf-vm/actions/install@v3
       - name: Create GitHub release
         run: make release
         env:
