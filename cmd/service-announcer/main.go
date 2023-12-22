@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	l4proxyconfig "github.com/makkes/l4proxy/config"
@@ -105,11 +106,6 @@ func (r Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (recon
 	return reconcile.Result{}, nil
 }
 
-func (r *Reconciler) InjectClient(c client.Client) error { //nolint:unparam // this is an interface implementation
-	r.client = c
-	return nil
-}
-
 func (r *Reconciler) InjectLogger(l logr.Logger) error { //nolint:unparam // this is an interface implementation
 	r.logger = l
 	return nil
@@ -117,6 +113,7 @@ func (r *Reconciler) InjectLogger(l logr.Logger) error { //nolint:unparam // thi
 
 func main() {
 	var (
+		metricsAddr       string
 		l4ProxyConfigFlag string
 		bindFlag          string
 		selectorFlag      string
@@ -125,14 +122,8 @@ func main() {
 
 	zap.New()
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
-	mgr, err := manager.New(config.GetConfigOrDie(), manager.Options{
-		MetricsBindAddress: "0",
-	})
-	if err != nil {
-		panic(err)
-	}
-
 	flags := flag.NewFlagSet("main", flag.ExitOnError)
+	flag.StringVar(&metricsAddr, "metrics-bind-address", envOrDefault("METRICS_ADDR", ":8080"), "The address the metric endpoint binds to.")
 	flags.StringVar(&l4ProxyConfigFlag, "l4proxy-config", "", "The path of the l4proxy config file.")
 	flags.StringVar(&bindFlag, "bind", "", "The address that l4proxy will bind to")
 	flags.StringVar(&selectorFlag, "label-selector", "", "Label selector used to select Services to"+
@@ -151,9 +142,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	mgr, err := manager.New(config.GetConfigOrDie(), manager.Options{
+		Metrics: metricsserver.Options{BindAddress: metricsAddr},
+	})
+	if err != nil {
+		setupLog.Error(err, "failed creating manager instance")
+		os.Exit(1)
+	}
+
 	err = builder.ControllerManagedBy(mgr).
 		For(&corev1.Service{}).
 		Complete(&Reconciler{
+			logger:         mgr.GetLogger(),
+			client:         mgr.GetClient(),
 			l4ProxyConfig:  l4ProxyConfigFlag,
 			bind:           bindFlag,
 			healthInterval: 5,
@@ -166,4 +167,13 @@ func main() {
 	if err := mgr.Start(context.TODO()); err != nil {
 		panic(err)
 	}
+}
+
+func envOrDefault(envName, defaultValue string) string {
+	ret := os.Getenv(envName)
+	if ret != "" {
+		return ret
+	}
+
+	return defaultValue
 }

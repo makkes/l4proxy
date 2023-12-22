@@ -26,4 +26,9 @@
         "-v"
     ],
     "go.buildOnSave": "workspace",
+    "[go][go.mod]": {
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        }
+    },
 }
