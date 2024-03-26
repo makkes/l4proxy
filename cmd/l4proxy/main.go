@@ -3,7 +3,6 @@ package main
 import (
 	goflag "flag"
 	"fmt"
-	"math/rand"
 	"os"
 	"time"
 
@@ -73,8 +72,6 @@ func (p *L4Proxy) Stop() {
 }
 
 func main() {
-	rand.Seed(time.Now().UnixNano())
-
 	var configFiles []string
 	flag.StringSliceVarP(&configFiles, "config", "c", nil, "configuration files")
 

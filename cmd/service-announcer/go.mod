@@ -1,6 +1,6 @@
 module github.com/makkes/l4proxy/service-announcer
 
-go 1.19
+go 1.22
 
 require (
 	github.com/go-logr/logr v1.4.1
