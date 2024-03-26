@@ -5,7 +5,7 @@ go 1.22
 require (
 	github.com/go-logr/logr v1.3.0
 	github.com/go-logr/stdr v1.2.2
-	github.com/stretchr/testify v1.8.2
+	github.com/stretchr/testify v1.9.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
