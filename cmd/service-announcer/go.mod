@@ -6,7 +6,7 @@ require (
 	github.com/go-logr/logr v1.4.1
 	github.com/makkes/l4proxy v0.0.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/api v0.29.0
+	k8s.io/api v0.29.3
 	k8s.io/apimachinery v0.29.3
 	sigs.k8s.io/controller-runtime v0.17.2
 )
