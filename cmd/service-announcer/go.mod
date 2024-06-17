@@ -1,14 +1,14 @@
 module github.com/makkes/l4proxy/service-announcer
 
 go 1.22
-toolchain go1.22.3
+toolchain go1.22.4
 
 require (
 	github.com/go-logr/logr v1.4.2
 	github.com/makkes/l4proxy v0.0.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.30.1
-	k8s.io/apimachinery v0.30.1
+	k8s.io/apimachinery v0.30.2
 	sigs.k8s.io/controller-runtime v0.18.4
 )
 
