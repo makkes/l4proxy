@@ -1,23 +1,22 @@
 version: 2
 updates:
   - package-ecosystem: "gomod"
-    directory: "/l4proxy"
+    directories:
+    - "/l4proxy"
+    - "/cmd/l4proxy"
+    - "/cmd/service-announcer"
+    - "/"
     schedule:
       interval: "weekly"
-  - package-ecosystem: "gomod"
-    directory: "/cmd/l4proxy"
-    schedule:
-      interval: "weekly"
-  - package-ecosystem: "gomod"
-    directory: "/cmd/service-announcer"
-    schedule:
-      interval: "weekly"
-  - package-ecosystem: "gomod"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-
+    groups:
+      go-deps:
+        patterns:
+        - '*'
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      actions-deps:
+        patterns:
+        - '*'
