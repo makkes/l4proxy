@@ -23,6 +23,18 @@ func TestNewBackend(t *testing.T) {
 	require.Equal(t, network, b.Network)
 }
 
+func TestStartFailsWithZeroHealthInterval(t *testing.T) {
+	b := NewBackend("tcp4", "1.2.3.4:4912", logr.Discard())
+	err := b.Start(0)
+	require.Errorf(t, err, "foobar")
+}
+
+func TestStartSucceedsWithExpectedHealthInterval(t *testing.T) {
+	b := NewBackend("tcp4", "1.2.3.4:4912", logr.Discard())
+	err := b.Start(42)
+	require.Nil(t, err)
+}
+
 func TestNewBackendWithOptions(t *testing.T) {
 	f := func(log logr.Logger, to net.Conn, from net.Conn, quitChan <-chan struct{}, keepaliveChan chan<- struct{}) <-chan struct{} {
 		return nil
@@ -78,7 +90,7 @@ func TestTCPConnectionHandling(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	keepaliveChan := make(chan struct{}, 2)
-	b.HandleConn(ctx, clientOut, keepaliveChan)
+	require.Nil(t, b.HandleConn(ctx, clientOut, keepaliveChan))
 	require.Equal(t, goroutinesStart, runtime.NumGoroutine(), "unexpected number of goroutines")
 }
 
@@ -128,6 +140,6 @@ func TestUDPConnectionHandling(t *testing.T) {
 	defer cancel()
 
 	keepaliveChan := make(chan struct{}, 2)
-	b.HandleConn(ctx, clientOut, keepaliveChan)
+	require.Nil(t, b.HandleConn(ctx, clientOut, keepaliveChan))
 	require.Equal(t, goroutinesStart, runtime.NumGoroutine(), "unexpected number of goroutines")
 }

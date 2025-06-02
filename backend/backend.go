@@ -109,7 +109,10 @@ func (b *Backend) IsHealthy() bool {
 	return healthy
 }
 
-func (b *Backend) Start(interval int) {
+func (b *Backend) Start(interval int) error {
+	if interval <= 0 {
+		return fmt.Errorf("interval must be > 0")
+	}
 	b.stopCh = make(chan struct{})
 	go func() {
 		b.checkHealth()
@@ -124,6 +127,8 @@ func (b *Backend) Start(interval int) {
 			}
 		}
 	}()
+
+	return nil
 }
 
 func (b *Backend) Stop() {

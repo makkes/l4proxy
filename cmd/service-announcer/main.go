@@ -120,7 +120,6 @@ func main() {
 		setupLog          = ctrl.Log.WithName("setup")
 	)
 
-	zap.New()
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 	flags := flag.NewFlagSet("main", flag.ExitOnError)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", envOrDefault("METRICS_ADDR", ":8080"), "The address the metric endpoint binds to.")
@@ -129,7 +128,10 @@ func main() {
 	flags.StringVar(&selectorFlag, "label-selector", "", "Label selector used to select Services to"+
 		"be included in the proxy configuration. See https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors "+
 		"for documentation on its syntax.")
-	flags.Parse(os.Args[1:])
+	if err := flags.Parse(os.Args[1:]); err != nil {
+		fmt.Fprintf(os.Stderr, "failed parsing command-line flags: %s\n", err.Error())
+		os.Exit(1)
+	}
 
 	if l4ProxyConfigFlag == "" {
 		setupLog.Error(fmt.Errorf("l4proxy config file not set"), "--l4proxy-config cannot be empty")

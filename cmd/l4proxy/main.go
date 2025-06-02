@@ -39,8 +39,7 @@ func (p *L4Proxy) Start() {
 		}
 		for _, beCfg := range feCfg.Backends {
 			if err := fe.AddBackend(beCfg.Address, feCfg.HealthInterval); err != nil {
-				fmt.Fprintf(os.Stderr, "error adding backend '%s': %s\n", beCfg.Address, err.Error())
-				os.Exit(1)
+				p.log.Error(err, "error adding backend", "backend", beCfg, "frontend", feCfg)
 			}
 		}
 		frontends = append(frontends, &fe)
@@ -76,8 +75,14 @@ func main() {
 	flag.StringSliceVarP(&configFiles, "config", "c", nil, "configuration files")
 
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
-	flag.Set("v", "1")
-	flag.Set("logtostderr", "true")
+	if err := flag.Set("v", "1"); err != nil {
+		fmt.Fprintf(os.Stderr, "failed configuring v flag: %s\n", err.Error())
+		os.Exit(1)
+	}
+	if err := flag.Set("logtostderr", "true"); err != nil {
+		fmt.Fprintf(os.Stderr, "failed configuring logtostderr flag: %s\n", err.Error())
+		os.Exit(1)
+	}
 	flag.Parse()
 
 	if len(configFiles) == 0 {
