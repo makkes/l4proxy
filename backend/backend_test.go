@@ -90,7 +90,7 @@ func TestTCPConnectionHandling(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	keepaliveChan := make(chan struct{}, 2)
-	b.HandleConn(ctx, clientOut, keepaliveChan)
+	require.Nil(t, b.HandleConn(ctx, clientOut, keepaliveChan))
 	require.Equal(t, goroutinesStart, runtime.NumGoroutine(), "unexpected number of goroutines")
 }
 
@@ -140,6 +140,6 @@ func TestUDPConnectionHandling(t *testing.T) {
 	defer cancel()
 
 	keepaliveChan := make(chan struct{}, 2)
-	b.HandleConn(ctx, clientOut, keepaliveChan)
+	require.Nil(t, b.HandleConn(ctx, clientOut, keepaliveChan))
 	require.Equal(t, goroutinesStart, runtime.NumGoroutine(), "unexpected number of goroutines")
 }
