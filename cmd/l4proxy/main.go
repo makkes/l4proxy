@@ -39,8 +39,7 @@ func (p *L4Proxy) Start() {
 		}
 		for _, beCfg := range feCfg.Backends {
 			if err := fe.AddBackend(beCfg.Address, feCfg.HealthInterval); err != nil {
-				fmt.Fprintf(os.Stderr, "error adding backend '%s': %s\n", beCfg.Address, err.Error())
-				os.Exit(1)
+				p.log.Error(err, "error adding backend", "backend", beCfg, "frontend", feCfg)
 			}
 		}
 		frontends = append(frontends, &fe)

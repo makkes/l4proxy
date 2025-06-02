@@ -111,7 +111,9 @@ func (f *Frontend) AddBackend(be string, healthInterval int) error {
 	}
 
 	backend := backend.NewBackend("tcp4", fmt.Sprintf("%s:%s", host, port), f.Log)
-	backend.Start(healthInterval)
+	if err := backend.Start(healthInterval); err != nil {
+		return fmt.Errorf("failed to start backend: %w", err)
+	}
 	f.Backends = append(f.Backends, backend)
 
 	return nil
