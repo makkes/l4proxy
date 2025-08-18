@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v3"
@@ -32,6 +33,8 @@ type Reconciler struct {
 	selector       labels.Selector
 }
 
+const AnnotationHealthInterval = "l4proxy.e13.dev/health-interval"
+
 func (r Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
 	var svc corev1.Service
 	log := r.logger
@@ -53,39 +56,34 @@ func (r Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (recon
 		return reconcile.Result{}, err
 	}
 
-	lbs := make(map[string][]int32)
+	cfg := l4proxyconfig.Config{
+		APIVersion: l4proxyconfig.APIVersionV1,
+	}
 
 	for _, svc := range svcs.Items {
 		if svc.DeletionTimestamp != nil && !svc.DeletionTimestamp.IsZero() {
 			continue
 		}
 		for _, ingress := range svc.Status.LoadBalancer.Ingress {
-			if _, ok := lbs[ingress.IP]; !ok {
-				lbs[ingress.IP] = make([]int32, 0)
-			}
 			for _, port := range svc.Spec.Ports {
 				if port.Protocol == "TCP" {
-					lbs[ingress.IP] = append(lbs[ingress.IP], port.Port)
+					fe := l4proxyconfig.Frontend{
+						Bind: fmt.Sprintf("%s:%d", r.bind, port.Port),
+						Backends: []l4proxyconfig.Backend{{
+							Address: fmt.Sprintf("%s:%d", ingress.IP, port.Port),
+						}},
+						HealthInterval: r.healthInterval,
+					}
+					if hiAnn, ok := svc.Annotations[AnnotationHealthInterval]; ok {
+						hi, err := strconv.Atoi(hiAnn)
+						if err != nil {
+							log.Error(err, "failed parsing annotation value", "namespace", svc.Namespace, "service", svc.Name, "annotation", AnnotationHealthInterval)
+						}
+						fe.HealthInterval = hi
+					}
+					cfg.Frontends = append(cfg.Frontends, fe)
 				}
 			}
-		}
-	}
-
-	cfg := l4proxyconfig.Config{
-		APIVersion: l4proxyconfig.APIVersionV1,
-	}
-	for ip, ports := range lbs {
-		for _, port := range ports {
-			fe := l4proxyconfig.Frontend{
-				Bind: fmt.Sprintf("%s:%d", r.bind, port),
-				Backends: []l4proxyconfig.Backend{
-					{
-						Address: fmt.Sprintf("%s:%d", ip, port),
-					},
-				},
-				HealthInterval: r.healthInterval,
-			}
-			cfg.Frontends = append(cfg.Frontends, fe)
 		}
 	}
 
@@ -122,7 +120,7 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 	flags := flag.NewFlagSet("main", flag.ExitOnError)
-	flag.StringVar(&metricsAddr, "metrics-bind-address", envOrDefault("METRICS_ADDR", ":8080"), "The address the metric endpoint binds to.")
+	flags.StringVar(&metricsAddr, "metrics-bind-address", envOrDefault("METRICS_ADDR", ":8080"), "The address the metric endpoint binds to.")
 	flags.StringVar(&l4ProxyConfigFlag, "l4proxy-config", "", "The path of the l4proxy config file.")
 	flags.StringVar(&bindFlag, "bind", "", "The address that l4proxy will bind to")
 	flags.StringVar(&selectorFlag, "label-selector", "", "Label selector used to select Services to"+
