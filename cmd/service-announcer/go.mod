@@ -6,9 +6,9 @@ require (
 	github.com/go-logr/logr v1.4.3
 	github.com/makkes/l4proxy v0.0.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/api v0.34.0
-	k8s.io/apimachinery v0.34.0
-	sigs.k8s.io/controller-runtime v0.22.0
+	k8s.io/api v0.34.1
+	k8s.io/apimachinery v0.34.1
+	sigs.k8s.io/controller-runtime v0.22.1
 )
 
 replace github.com/makkes/l4proxy => ../..
