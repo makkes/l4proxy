@@ -141,7 +141,11 @@ func (b *Backend) Stop() {
 
 func (b *Backend) HandleConn(ctx context.Context, c net.Conn, keepaliveChan chan<- struct{}) error {
 	b.log.V(3).Info("handling incoming connection", "remote", c.RemoteAddr().String())
-	defer c.Close()
+	defer func() {
+		if err := c.Close(); err != nil {
+			b.log.Error(err, "failed closing client connection")
+		}
+	}()
 	var dialer net.Dialer
 	beconn, err := dialer.DialContext(ctx, b.Network, b.Addr)
 	if err != nil {
@@ -155,8 +159,12 @@ func (b *Backend) HandleConn(ctx context.Context, c net.Conn, keepaliveChan chan
 
 	defer func() {
 		// close connections and wait for goroutines to shut down
-		beconn.Close()
-		c.Close()
+		if err := beconn.Close(); err != nil {
+			b.log.Error(err, "failed closing backend connection")
+		}
+		if err := c.Close(); err != nil {
+			b.log.Error(err, "failed closing client connection after handling proxy requests")
+		}
 		<-clDirChan
 		<-beDirChan
 	}()

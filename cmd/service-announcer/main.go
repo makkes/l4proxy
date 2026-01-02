@@ -91,7 +91,11 @@ func (r Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (recon
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("could not open output file: %w", err)
 	}
-	defer out.Close()
+	defer func() {
+		if closeErr := out.Close(); closeErr != nil {
+			log.Error(closeErr, "failed to close output file")
+		}
+	}()
 
 	encoder := yaml.NewEncoder(out)
 	encoder.SetIndent(2)
