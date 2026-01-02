@@ -34,6 +34,7 @@ type Backend struct {
 }
 
 func Read(cfgPath string) (*Config, error) {
+	//gosec:disable G304 -- cfgPath is provided by the caller and is expected to be a trusted configuration file path
 	cfgBytes, err := os.ReadFile(cfgPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read configuration file %q: %w", cfgPath, err)

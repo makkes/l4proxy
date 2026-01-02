@@ -1,3 +1,3 @@
-golangci-lint 1.64.8
+golangci-lint 2.7.2
 pre-commit 3.7.0
 goreleaser 1.24.0

@@ -180,7 +180,9 @@ func (f *Frontend) Start() error {
 
 func (f *Frontend) Stop() {
 	if f.listener != nil {
-		f.listener.Close()
+		if err := f.listener.Close(); err != nil {
+			f.Log.Error(err, "failed closing listener connection")
+		}
 		for _, be := range f.Backends {
 			be.Stop()
 		}
@@ -207,5 +209,7 @@ func handleConn(ctx context.Context, log logr.Logger, cconn net.Conn, keepaliveC
 		log.V(4).Info("skipping unhealthy backend", "backend", backends[idx])
 	}
 	log.Error(nil, "all backends are unhealthy")
-	cconn.Close()
+	if err := cconn.Close(); err != nil {
+		log.Error(err, "failed closing client connection")
+	}
 }

@@ -1,8 +1,9 @@
+version: "2"
 run:
   timeout: 5m
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - errcheck
     - gochecknoinits
@@ -10,10 +11,7 @@ linters:
     - gocritic
     - gocyclo
     - godot
-    - gofmt
-    - goimports
     - gosec
-    - gosimple
     - govet
     - ineffassign
     - lll
@@ -21,15 +19,17 @@ linters:
     - nolintlint
     - prealloc
     - staticcheck
-    - stylecheck
-    - typecheck
     - unconvert
     - unparam
     - unused
     - whitespace
+  settings:
+    lll:
+      line-length: 197
+    goimports:
+      local-prefixes: github.com/makkes/l4proxy
 
-linters-settings:
-  lll:
-    line-length: 197
-  goimports:
-    local-prefixes: github.com/makkes/l4proxy
+formatters:
+  enable:
+    - gofmt
+    - goimports
