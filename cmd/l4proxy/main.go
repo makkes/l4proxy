@@ -1,3 +1,4 @@
+// L4proxy is a layer 4 TCP proxy.
 package main
 
 import (
@@ -28,14 +29,14 @@ func NewL4Proxy(cfg config.Config, log logr.Logger) L4Proxy {
 }
 
 func (p *L4Proxy) Start() {
-	frontends := make([]*frontend.Frontend, 0)
+	frontends := make([]*frontend.Frontend, 0, len(p.cfg.Frontends))
 	for _, feCfg := range p.cfg.Frontends {
 		fe, err := frontend.NewFrontend("tcp", feCfg.Bind, p.log,
 			frontend.WithTimeout(feCfg.Timeout),
 		)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error creating frontend: %s\n", err.Error())
-			os.Exit(1)
+			os.Exit(1) //revive:disable:deep-exit // TODO: refactor
 		}
 		for _, beCfg := range feCfg.Backends {
 			if err := fe.AddBackend(beCfg.Address, feCfg.HealthInterval); err != nil {
@@ -70,6 +71,8 @@ func (p *L4Proxy) Stop() {
 	}
 }
 
+//nolint:gocognit // TODO: reduce cognitive complexity
+//revive:disable:cyclomatic // TODO: reduce cognitive complexity
 func main() {
 	var configFiles []string
 	flag.StringSliceVarP(&configFiles, "config", "c", nil, "configuration files")
@@ -86,7 +89,7 @@ func main() {
 	flag.Parse()
 
 	if len(configFiles) == 0 {
-		fmt.Fprintf(os.Stderr, "no config file provided, exiting.\n")
+		fmt.Fprintln(os.Stderr, "no config file provided, exiting.")
 		os.Exit(1)
 	}
 

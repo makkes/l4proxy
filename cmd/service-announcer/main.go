@@ -1,7 +1,9 @@
+// Service-announcer write an L4proxy configuration from Kubernetes LoadBalancer services.
 package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -10,7 +12,7 @@ import (
 	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -35,15 +37,17 @@ type Reconciler struct {
 
 const AnnotationHealthInterval = "l4proxy.e13.dev/health-interval"
 
-func (r Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
+//nolint:gocognit // TODO: refactor
+//revive:disable:cyclomatic // TODO: refactor
+func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
 	var svc corev1.Service
 	log := r.logger
 	if err := r.client.Get(ctx, req.NamespacedName, &svc); err != nil {
-		if errors.IsNotFound(err) {
+		if apierrs.IsNotFound(err) {
 			// Service is gone, just carry on
 			return reconcile.Result{}, nil
 		}
-		return reconcile.Result{}, err
+		return reconcile.Result{}, fmt.Errorf("failed retrieving service %s: %w", req.NamespacedName, err)
 	}
 
 	if svc.Spec.Type != corev1.ServiceTypeLoadBalancer {
@@ -53,14 +57,15 @@ func (r Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (recon
 
 	var svcs corev1.ServiceList
 	if err := r.client.List(ctx, &svcs, client.MatchingLabelsSelector{Selector: r.selector}); err != nil {
-		return reconcile.Result{}, err
+		return reconcile.Result{}, fmt.Errorf("failed listing services: %w", err)
 	}
 
 	cfg := l4proxyconfig.Config{
 		APIVersion: l4proxyconfig.APIVersionV1,
 	}
 
-	for _, svc := range svcs.Items {
+	for idx := range svcs.Items {
+		svc := svcs.Items[idx]
 		if svc.DeletionTimestamp != nil && !svc.DeletionTimestamp.IsZero() {
 			continue
 		}
@@ -77,7 +82,11 @@ func (r Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (recon
 					if hiAnn, ok := svc.Annotations[AnnotationHealthInterval]; ok {
 						hi, err := strconv.Atoi(hiAnn)
 						if err != nil {
-							log.Error(err, "failed parsing annotation value", "namespace", svc.Namespace, "service", svc.Name, "annotation", AnnotationHealthInterval)
+							log.Error(err, "failed parsing annotation value",
+								"namespace", svc.Namespace,
+								"service", svc.Name,
+								"annotation", AnnotationHealthInterval,
+							)
 						}
 						fe.HealthInterval = hi
 					}
@@ -100,7 +109,7 @@ func (r Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (recon
 	encoder := yaml.NewEncoder(out)
 	encoder.SetIndent(2)
 	if err := encoder.Encode(cfg); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed marshalling config: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed marshaling config: %w", err)
 	}
 
 	log.Info("updated configuration file")
@@ -136,7 +145,7 @@ func main() {
 	}
 
 	if l4ProxyConfigFlag == "" {
-		setupLog.Error(fmt.Errorf("l4proxy config file not set"), "--l4proxy-config cannot be empty")
+		setupLog.Error(errors.New("l4proxy config file not set"), "--l4proxy-config cannot be empty")
 		os.Exit(1)
 	}
 

@@ -1,3 +1,4 @@
+// Package config provides types for configuring l4proxy and for reading the configuration from a file.
 package config
 
 import (
@@ -8,31 +9,36 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// APIVersion is the type used to represent different configuration API versions.
 type APIVersion string
 
 const (
 	APIVersionV1 APIVersion = "v1"
 )
 
+// Config represents a full l4proxy configuration.
 type Config struct {
 	// APIVersion specifies the version of the configuration file used when it was persisted. This field doesn't
 	// have any impact at the moment but provides forward-compatibility when a backwards-incompatible change has
 	// to be applied to the configuration in which case this version is increased.
-	APIVersion APIVersion `yaml:"apiVersion" json:"apiVersion"`
-	Frontends  []Frontend `yaml:"frontends" json:"frontends"`
+	APIVersion APIVersion `json:"api_version" yaml:"apiVersion"`
+	Frontends  []Frontend `json:"frontends"   yaml:"frontends"`
 }
 
+// Frontend represents the configuration of a frontend and one or more backends.
 type Frontend struct {
-	Bind           string        `yaml:"bind" json:"bind"`
-	Backends       []Backend     `yaml:"backends" json:"backends"`
-	HealthInterval int           `yaml:"healthInterval" json:"healthInterval"`
-	Timeout        time.Duration `yaml:"timeout" json:"timeout"`
+	Bind           string        `json:"bind"            yaml:"bind"`
+	Backends       []Backend     `json:"backends"        yaml:"backends"`
+	HealthInterval int           `json:"health_interval" yaml:"healthInterval"`
+	Timeout        time.Duration `json:"timeout"         yaml:"timeout"`
 }
 
+// Backend represents the configuration of a single backend.
 type Backend struct {
-	Address string `yaml:"address" json:"address"`
+	Address string `json:"address" yaml:"address"`
 }
 
+// Read reads a [Config] from the given file. A non-nil error is returned when the file can't be opened or its format is unrecognized.
 func Read(cfgPath string) (*Config, error) {
 	//gosec:disable G304 -- cfgPath is provided by the caller and is expected to be a trusted configuration file path
 	cfgBytes, err := os.ReadFile(cfgPath)
