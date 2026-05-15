@@ -1,35 +1,182 @@
 version: "2"
+
 run:
   timeout: 5m
+  issues-exit-code: 1
+  tests: true
+  modules-download-mode: readonly
+  allow-parallel-runners: true
+  allow-serial-runners: true
+  build-tags:
+    - integration
 
-linters:
-  default: none
-  enable:
-    - errcheck
-    - gochecknoinits
-    - goconst
-    - gocritic
-    - gocyclo
-    - godot
-    - gosec
-    - govet
-    - ineffassign
-    - lll
-    - misspell
-    - nolintlint
-    - prealloc
-    - staticcheck
-    - unconvert
-    - unparam
-    - unused
-    - whitespace
-  settings:
-    lll:
-      line-length: 197
-    goimports:
-      local-prefixes: github.com/makkes/l4proxy
+output:
+  show-stats: true
 
 formatters:
   enable:
-    - gofmt
+    - gci
     - goimports
+    - gofumpt
+  settings:
+    goimports:
+      local-prefixes:
+      - github.com/makkes/l4proxy
+    gci:
+      sections:
+        - Standard
+        - Default
+        - Prefix(github.com/makkes)
+        - Prefix(github.com/makkes/l4proxy)
+
+linters:
+  default: all
+  disable:
+  - gomodguard # deprecated
+  - godox # re-enable as soon as all TODOs are fixed
+  - cyclop
+  - varnamelen
+  - noinlineerr
+  - nlreturn
+  - mnd
+  - exhaustruct
+  - wsl
+  - wsl_v5
+  - err113
+  - lll # we use revive's line-length-limit for this
+  exclusions:
+    rules:
+    - path: '(.+)_test\.go'
+      linters:
+      - funlen
+    paths:
+    - sql/mocks/
+    - internal/mocks/
+
+  settings:
+    gomoddirectives:
+      replace-local: true
+
+    inamedparam:
+      skip-single-param: true
+
+    tagliatelle:
+      case:
+        rules:
+          json: snake
+
+    depguard:
+      rules:
+        main:
+          allow:
+          - $gostd
+          - github.com/go-logr/glogr
+          - github.com/go-logr/logr
+          - github.com/go-logr/stdr
+          - github.com/makkes/l4proxy
+          - github.com/spf13/pflag
+          - github.com/stretchr/testify
+          - gopkg.in/yaml.v3
+          - k8s.io/api
+          - k8s.io/apimachinery
+          - sigs.k8s.io/controller-runtime
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+        - shadow
+
+    gosec:
+      severity: medium
+      confidence: medium
+      excludes:
+      - G705 # too many false positives, e.g. when writing the trace ID to the http.ResponseWriter
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+      disabled-checks:
+        - unnamedResult
+        - whyNoLint
+      settings:
+        hugeParam:
+          sizeThreshold: 100
+
+    revive:
+      severity: error
+      enable-all-rules: true
+      directives:
+        - name: specify-disable-reason
+          severity: error
+      confidence: 0.0
+      rules:
+      - name: exported
+        arguments:
+          - disableChecksOnConstants
+      - name: cognitive-complexity
+        arguments: [99]
+      - name: dot-imports
+        arguments:
+          - allowedPackages:
+            - github.com/onsi/gomega
+      - name: add-constant
+        disabled: true
+      - name: line-length-limit
+        severity: error
+        arguments: [150]
+      - name: unhandled-error
+        disabled: true # these are handled by errcheck
+      - name: function-length
+        disabled: true
+      - name: var-naming
+        arguments:
+        - []
+        - []
+        - - skip-package-name-collision-with-go-std: true
+
+
+    staticcheck:
+      checks: ["all"]
+
+    testifylint:
+      disable:
+      - go-require # TODO: re-enable and fix errors
+
+    funlen:
+      lines: 100
+      statements: 50
+      ignore-comments: true
+
+
+    gocognit:
+      min-complexity: 15
+
+    lll:
+      line-length: 120
+      tab-width: 4
+
+    nestif:
+      min-complexity: 4
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+      match-constant: true
+      numbers: true
+
+    misspell:
+      locale: US
+
+issues:
+  max-issues-per-linter: 999
+  max-same-issues: 0
+  new: false
+  fix: false
