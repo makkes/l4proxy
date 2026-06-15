@@ -13,6 +13,7 @@ require (
 
 require (
 	github.com/golang/glog v1.2.4 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
