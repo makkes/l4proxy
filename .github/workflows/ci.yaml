@@ -2,18 +2,35 @@ name: ci
 
 on: [push]
 jobs:
-  test:
+  analyze-code:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
-          go-version-file: 'go.work'
-    - name: Install asdf and tools
-      uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
-      with:
-        asdf_branch: v0.15.0
+        go-version-file: 'go.mod'
+        cache-dependency-path: |
+          go.sum
+          tools/go.sum
+    - name: install task
+      uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
     - name: Lint code
-      run: make lint
+      run: task lint
     - name: Run unit tests
-      run: make test
+      run: task test-unit
+    - name: verify security
+      run: task check-security
+  unit-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: 'go.mod'
+        cache-dependency-path: |
+          go.sum
+          tools/go.sum
+    - name: install task
+      uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
+    - name: Run unit tests
+      run: task test-unit

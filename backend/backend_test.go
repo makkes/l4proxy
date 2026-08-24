@@ -2,15 +2,12 @@ package backend_test
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net"
-	"os"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/go-logr/logr"
-	"github.com/go-logr/stdr"
 	"github.com/stretchr/testify/require"
 
 	"github.com/makkes/l4proxy/backend"
@@ -21,7 +18,7 @@ func TestNewBackend(t *testing.T) {
 
 	network := "tcp4"
 	addr := "1.2.3.4:5544"
-	b := backend.NewBackend(network, addr, logr.Discard())
+	b := backend.NewBackend(network, addr, slog.New(slog.DiscardHandler))
 	require.Equal(t, addr, b.Addr)
 	require.Equal(t, network, b.Network)
 }
@@ -29,7 +26,7 @@ func TestNewBackend(t *testing.T) {
 func TestStartFailsWithZeroHealthInterval(t *testing.T) {
 	t.Parallel()
 
-	b := backend.NewBackend("tcp4", "1.2.3.4:4912", logr.Discard())
+	b := backend.NewBackend("tcp4", "1.2.3.4:4912", slog.New(slog.DiscardHandler))
 	err := b.Start(0)
 	require.Errorf(t, err, "foobar")
 }
@@ -37,7 +34,7 @@ func TestStartFailsWithZeroHealthInterval(t *testing.T) {
 func TestStartSucceedsWithExpectedHealthInterval(t *testing.T) {
 	t.Parallel()
 
-	b := backend.NewBackend("tcp4", "1.2.3.4:4912", logr.Discard())
+	b := backend.NewBackend("tcp4", "1.2.3.4:4912", slog.New(slog.DiscardHandler))
 	err := b.Start(42)
 	require.NoError(t, err)
 }
@@ -56,7 +53,7 @@ func TestNewBackendWithCustomProxy(t *testing.T) {
 
 	pConn, _ := net.Pipe()
 	var calls atomic.Int32
-	f := func(_ logr.Logger, to net.Conn, from net.Conn, _ <-chan struct{}, _ chan<- struct{}) <-chan struct{} {
+	f := func(_ *slog.Logger, to net.Conn, from net.Conn, _ <-chan struct{}, _ chan<- struct{}) <-chan struct{} {
 		cnt := calls.Add(1)
 		// first, the connection from client to backend should be proxied
 		if cnt == 1 {
@@ -75,7 +72,7 @@ func TestNewBackendWithCustomProxy(t *testing.T) {
 		return res
 	}
 
-	b := backend.NewBackend(backendSrvListener.Addr().Network(), backendSrvListener.Addr().String(), logr.Discard(), backend.WithProxyFunc(f))
+	b := backend.NewBackend(backendSrvListener.Addr().Network(), backendSrvListener.Addr().String(), slog.New(slog.DiscardHandler), backend.WithProxyFunc(f))
 
 	require.NoError(t, b.HandleConn(t.Context(), pConn, nil), "handling connection should succeed")
 	require.NoError(t, pConn.Close(), "closing pipe should succeed")
@@ -109,8 +106,7 @@ func TestTCPConnectionHandling(t *testing.T) {
 		require.NoError(t, conn.Close(), "could not close backend conn")
 	}()
 
-	logger := stdr.New(log.New(os.Stderr, "", log.Lmicroseconds))
-	b := backend.NewBackend("tcp4", be.Addr().String(), logger)
+	b := backend.NewBackend("tcp4", be.Addr().String(), slog.New(slog.DiscardHandler))
 	go func() {
 		n, err := clientIn.Write([]byte("hello"))
 		require.NoError(t, err, "could not write to client conn")
@@ -157,7 +153,7 @@ func TestUDPConnectionHandling(t *testing.T) {
 		require.NoError(t, be.Close(), "could not close backend conn")
 	}()
 
-	b := backend.NewBackend("udp4", be.LocalAddr().String(), stdr.New(nil))
+	b := backend.NewBackend("udp4", be.LocalAddr().String(), slog.New(slog.DiscardHandler))
 
 	go func() {
 		n, err := clientIn.Write([]byte("hello"))

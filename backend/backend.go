@@ -6,20 +6,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
-
-	"github.com/go-logr/logr"
 )
 
-type proxyFunc func(log logr.Logger, to net.Conn, from net.Conn, quitChan <-chan struct{}, keepaliveChan chan<- struct{}) <-chan struct{}
+type proxyFunc func(log *slog.Logger, to net.Conn, from net.Conn, quitChan <-chan struct{}, keepaliveChan chan<- struct{}) <-chan struct{}
 
 // Backend represents a single backend served by a [frontend.Frontend].
 type Backend struct {
 	Addr    string `json:"addr"`
 	Network string `json:"network"`
-	log     logr.Logger
+	log     *slog.Logger
 	LastErr error `json:"last_err"`
 	healthy *bool
 	stopCh  chan struct{}
@@ -31,11 +30,11 @@ func isClosedConnErr(err error) bool {
 	return errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed)
 }
 
-func logConnErr(log logr.Logger, err error, closedAddr, errAddr, errMsg string) {
+func logConnErr(log *slog.Logger, err error, closedAddr, errAddr, errMsg string) {
 	if isClosedConnErr(err) {
-		log.V(4).Info("connection has been closed", "conn", closedAddr)
+		log.Debug("connection has been closed", "conn", closedAddr)
 	} else {
-		log.V(4).Info(errMsg, "conn", errAddr, "err", err.Error())
+		log.Info(errMsg, "conn", errAddr, "err", err.Error())
 	}
 }
 
@@ -48,9 +47,9 @@ func quitRequested(quitChan <-chan struct{}) bool {
 	}
 }
 
-func proxy(log logr.Logger, to, from net.Conn, quitChan <-chan struct{}, keepaliveChan chan<- struct{}) <-chan struct{} {
+func proxy(log *slog.Logger, to, from net.Conn, quitChan <-chan struct{}, keepaliveChan chan<- struct{}) <-chan struct{} {
 	closeChan := make(chan struct{})
-	log = log.WithName(fmt.Sprintf("%s->%s", from.RemoteAddr().String(), to.RemoteAddr().String()))
+	log = log.With("name", fmt.Sprintf("%s->%s", from.RemoteAddr().String(), to.RemoteAddr().String()))
 	go func() {
 		defer close(closeChan)
 		buf := make([]byte, 1024)
@@ -63,18 +62,18 @@ func proxy(log logr.Logger, to, from net.Conn, quitChan <-chan struct{}, keepali
 				logConnErr(log, err, from.RemoteAddr().String(), from.RemoteAddr().String(), "error reading from conn")
 				return
 			}
-			log.V(5).Info("read complete", "bytes", nRead)
+			log.Debug("read complete", "bytes", nRead)
 
 			if quitRequested(quitChan) {
 				return
 			}
-			log.V(6).Info("writing to " + to.RemoteAddr().String())
+			log.Debug("writing to " + to.RemoteAddr().String())
 			n, err := to.Write(buf[0:nRead])
 			if err != nil {
 				logConnErr(log, err, from.RemoteAddr().String(), to.RemoteAddr().String(), "error writing to conn")
 				return
 			}
-			log.V(5).Info("write complete", "bytes", n)
+			log.Debug("write complete", "bytes", n)
 
 			keepaliveChan <- struct{}{}
 		}
@@ -87,7 +86,7 @@ type Option func(b *Backend)
 
 // NewBackend creates a new backend with the given configuration. Use [Backend.Start] to actually start the backend and
 // serve traffic.
-func NewBackend(network, addr string, log logr.Logger, opts ...Option) *Backend {
+func NewBackend(network, addr string, log *slog.Logger, opts ...Option) *Backend {
 	b := &Backend{
 		Addr:    addr,
 		Network: network,
@@ -155,12 +154,12 @@ func (b *Backend) Stop() {
 
 // HandleConn starts proxying data between a client represented by the provided net.Conn and this backend.
 func (b *Backend) HandleConn(ctx context.Context, c net.Conn, keepaliveChan chan<- struct{}) error {
-	b.log.V(3).Info("handling incoming connection", "remote", c.RemoteAddr().String())
+	b.log.Info("handling incoming connection", "remote", c.RemoteAddr().String())
 	defer func() {
 		// make sure that the client connection is closed. It might have already
 		// been closed before so we check for net.ErrClosed.
 		if err := c.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-			b.log.Error(err, "failed closing client connection")
+			b.log.Error("failed closing client connection", "error", err)
 		}
 	}()
 	var dialer net.Dialer
@@ -177,10 +176,10 @@ func (b *Backend) HandleConn(ctx context.Context, c net.Conn, keepaliveChan chan
 	defer func() {
 		// close connections and wait for goroutines to shut down
 		if err := beconn.Close(); err != nil {
-			b.log.Error(err, "failed closing backend connection")
+			b.log.Error("failed closing backend connection", "error", err)
 		}
 		if err := c.Close(); err != nil {
-			b.log.Error(err, "failed closing client connection after handling proxy requests")
+			b.log.Error("failed closing client connection after handling proxy requests", "error", err)
 		}
 		<-clDirChan
 		<-beDirChan
@@ -207,12 +206,12 @@ func (b *Backend) setHealth(healthy bool, err error) {
 }
 
 func (b *Backend) checkHealth() {
-	b.log.V(5).Info("checking health", "backend", b)
+	b.log.Debug("checking health", "backend", b)
 	var dialer net.Dialer
 	conn, err := dialer.DialContext(context.Background(), b.Network, b.Addr) // TODO: use an actual context here.
 	if err != nil {
 		if b.healthy == nil || *b.healthy {
-			b.log.V(2).Info("backend got unhealthy", "backend", b)
+			b.log.Warn("backend got unhealthy", "backend", b)
 		}
 		b.setHealth(false, err)
 
@@ -222,7 +221,7 @@ func (b *Backend) checkHealth() {
 		b.setHealth(false, err)
 	}
 	if b.healthy == nil || !*b.healthy {
-		b.log.V(2).Info("backend got healthy", "backend", b.Addr)
+		b.log.Info("backend got healthy", "backend", b.Addr)
 	}
 	b.setHealth(true, nil)
 }

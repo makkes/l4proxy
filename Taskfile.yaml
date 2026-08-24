@@ -1,0 +1,76 @@
+version: "3"
+
+set:
+  - errexit
+  - nounset
+  - pipefail
+
+env:
+  GOEXPERIMENT: jsonv2
+
+vars:
+  BINARY_NAME: l4proxy
+  CGO_ENABLED: 0
+  LDFLAGS: -w -s
+  GOOS:
+    sh: go env GOOS
+  GOARCH:
+    sh: go env GOARCH
+  GIT_TAG:
+    sh: git describe --tags --exact-match HEAD 2>/dev/null || echo "dev"
+  GIT_DIRTY:
+    sh: git diff --quiet || echo "yes"
+  VERSION:
+    sh: |
+      if [ -n "{{.VERSION}}" ] ; then
+        echo {{.VERSION}}
+      elif [ -n "{{.GIT_DIRTY}}" ] ; then
+        echo "{{.GIT_TAG}}-dirty"
+      else
+        echo "{{.GIT_TAG}}"
+      fi
+
+tasks:
+
+  build-release:
+    cmds:
+      - task: build
+      - task: sign-checksums
+
+  build:
+    desc: Build the application and place it in ./build/
+    cmds:
+    - cmd: rm -rf build/
+    - for: [['linux', 'amd64'], ['linux', 'arm64'], ['darwin', 'arm64']]
+      cmd: CGO_ENABLED={{.CGO_ENABLED}} GOOS={{index .ITEM 0}} GOARCH={{index .ITEM 1}} go build -ldflags="{{.LDFLAGS}}" -o build/{{.BINARY_NAME}}-{{.VERSION}}-{{index .ITEM 0}}-{{index .ITEM 1}} -buildvcs=true .
+    - cmd: cd build && sha256sum {{.BINARY_NAME}}-* > checksums.txt
+
+  sign-checksums:
+    desc: Sign all the checksums file for all binaries using cosign
+    cmd: cd build && cosign sign-blob --yes  --bundle bundle.sigstore.json checksums.txt
+
+  test-smoke:
+    deps:
+      - build
+    desc: Run smoke tests
+    cmd: ./hack/smoke-test.sh
+
+  test-unit:
+    desc: Run unit tests only
+    cmds:
+    - go test -race ./... {{.CLI_ARGS}}
+
+  run-server:
+    desc: Run the proxy server directly from source
+    cmds:
+    - go run main.go server {{.CLI_ARGS}}
+
+  check-security:
+    desc: Run security checks with govulncheck
+    cmds:
+      - go tool -modfile=tools/go.mod govulncheck ./...
+
+  lint:
+    desc: Lint the code using golangci-lint
+    cmds:
+      - go tool -modfile=tools/go.mod golangci-lint run -v {{.CLI_ARGS}}
