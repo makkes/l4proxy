@@ -1,3 +1,4 @@
+// Package main provides the l4proxy command-line application.
 package main
 
 import (

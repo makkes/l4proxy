@@ -20,7 +20,7 @@ func NewRootCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		SilenceUsage: true,
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
 			var err error
 			log, err = initLogger(logLevel, logFormat)
 			return err

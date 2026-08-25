@@ -143,6 +143,7 @@ func (b *Backend) Start(interval int) error {
 }
 
 // Stop stops the health check and marks the backend as stopped.
+//
 // TODO: It's still possible to call [Backend.HandleConn] after Stop has been called.
 func (b *Backend) Stop() {
 	if b.stopCh == nil {

@@ -43,6 +43,7 @@ linters:
   - wsl_v5
   - err113
   - lll # we use revive's line-length-limit for this
+  - godox
   exclusions:
     rules:
     - path: '(.+)_test\.go'

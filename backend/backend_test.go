@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/makkes/l4proxy/backend"
@@ -72,7 +73,12 @@ func TestNewBackendWithCustomProxy(t *testing.T) {
 		return res
 	}
 
-	b := backend.NewBackend(backendSrvListener.Addr().Network(), backendSrvListener.Addr().String(), slog.New(slog.DiscardHandler), backend.WithProxyFunc(f))
+	b := backend.NewBackend(
+		backendSrvListener.Addr().Network(),
+		backendSrvListener.Addr().String(),
+		slog.New(slog.DiscardHandler),
+		backend.WithProxyFunc(f),
+	)
 
 	require.NoError(t, b.HandleConn(t.Context(), pConn, nil), "handling connection should succeed")
 	require.NoError(t, pConn.Close(), "closing pipe should succeed")
@@ -91,35 +97,39 @@ func TestTCPConnectionHandling(t *testing.T) {
 
 	go func() {
 		conn, err := be.Accept()
-		require.NoError(t, err, "could not accept connection")
+		if !assert.NoError(t, err, "could not accept connection") {
+			return
+		}
 		buf := make([]byte, 5)
 
 		n, err := conn.Read(buf)
-		require.NoError(t, err, "could not read from backend conn")
-		require.Equal(t, 5, n, "unexpected number of bytes received from client")
-		require.Equal(t, []byte("hello"), buf)
+		if !assert.NoError(t, err, "could not read from backend conn") {
+			return
+		}
+		assert.Equal(t, 5, n, "unexpected number of bytes received from client")
+		assert.Equal(t, []byte("hello"), buf)
 
 		n, err = conn.Write([]byte("hello yourself"))
-		require.NoError(t, err, "could not write to client")
-		require.Equal(t, 14, n, "unexpected number of bytes written to client")
+		assert.NoError(t, err, "could not write to client")
+		assert.Equal(t, 14, n, "unexpected number of bytes written to client")
 
-		require.NoError(t, conn.Close(), "could not close backend conn")
+		assert.NoError(t, conn.Close(), "could not close backend conn")
 	}()
 
 	b := backend.NewBackend("tcp4", be.Addr().String(), slog.New(slog.DiscardHandler))
 	go func() {
 		n, err := clientIn.Write([]byte("hello"))
-		require.NoError(t, err, "could not write to client conn")
-		require.Equal(t, 5, n, "unexpected number of bytes written to backend")
+		assert.NoError(t, err, "could not write to client conn")
+		assert.Equal(t, 5, n, "unexpected number of bytes written to backend")
 	}()
 
 	go func() {
 		buf := make([]byte, 14)
 		n, err := clientIn.Read(buf)
-		require.NoError(t, err, "could not read from client conn")
-		require.Equal(t, 14, n, "unexpected number of bytes received from backend")
+		assert.NoError(t, err, "could not read from client conn")
+		assert.Equal(t, 14, n, "unexpected number of bytes received from backend")
 
-		require.NoError(t, clientOut.Close(), "could not close client conn")
+		assert.NoError(t, clientOut.Close(), "could not close client conn")
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -142,32 +152,34 @@ func TestUDPConnectionHandling(t *testing.T) {
 		buf := make([]byte, 5)
 
 		n, addr, err := be.ReadFromUDP(buf)
-		require.NoError(t, err, "could not read from backend conn")
-		require.Equal(t, 5, n, "unexpected number of bytes received from client")
-		require.Equal(t, []byte("hello"), buf)
+		if !assert.NoError(t, err, "could not read from backend conn") {
+			return
+		}
+		assert.Equal(t, 5, n, "unexpected number of bytes received from client")
+		assert.Equal(t, []byte("hello"), buf)
 
 		n, err = be.WriteToUDP([]byte("hello yourself"), addr)
-		require.NoError(t, err, "could not write to client")
-		require.Equal(t, 14, n, "unexpeted number of bytes written to client")
+		assert.NoError(t, err, "could not write to client")
+		assert.Equal(t, 14, n, "unexpected number of bytes written to client")
 
-		require.NoError(t, be.Close(), "could not close backend conn")
+		assert.NoError(t, be.Close(), "could not close backend conn")
 	}()
 
 	b := backend.NewBackend("udp4", be.LocalAddr().String(), slog.New(slog.DiscardHandler))
 
 	go func() {
 		n, err := clientIn.Write([]byte("hello"))
-		require.NoError(t, err, "could not write to client conn")
-		require.Equal(t, 5, n, "unexpected number of bytes written to backend")
+		assert.NoError(t, err, "could not write to client conn")
+		assert.Equal(t, 5, n, "unexpected number of bytes written to backend")
 	}()
 
 	go func() {
 		buf := make([]byte, 14)
 		n, err := clientIn.Read(buf)
-		require.NoError(t, err, "could not read from client conn")
-		require.Equal(t, 14, n, "unexpected number of bytes received from backend")
+		assert.NoError(t, err, "could not read from client conn")
+		assert.Equal(t, 14, n, "unexpected number of bytes received from backend")
 
-		require.NoError(t, clientOut.Close(), "could not close client conn")
+		assert.NoError(t, clientOut.Close(), "could not close client conn")
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

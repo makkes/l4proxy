@@ -17,6 +17,7 @@ import (
 	l4proxyconfig "github.com/makkes/l4proxy/config"
 )
 
+// Reconciler creates an l4proxy configuration from selected Kubernetes services.
 type Reconciler struct {
 	client         client.Client
 	healthInterval int
@@ -28,9 +29,11 @@ type Reconciler struct {
 
 const AnnotationHealthInterval = "l4proxy.e13.dev/health-interval"
 
-//nolint:gocognit // TODO: refactor
-//revive:disable:cyclomatic // TODO: refactor
-func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
+// Reconcile regenerates the l4proxy configuration from the current services.
+//
+//nolint:gocognit // The configuration construction has several nested filters.
+//revive:disable:cyclomatic // The configuration construction has several nested filters.
+func (r *Reconciler) Reconcile(ctx context.Context, _ reconcile.Request) (reconcile.Result, error) {
 	log := r.logger
 
 	var svcs corev1.ServiceList

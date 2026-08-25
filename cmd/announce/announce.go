@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -23,6 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+// NewCommand creates the service announcer subcommand.
 func NewCommand(log **slog.Logger) *cobra.Command {
 	var (
 		metricsAddr       string
@@ -70,12 +70,10 @@ func run(ctx context.Context, log *slog.Logger, selector labels.Selector, metric
 	err = builder.ControllerManagedBy(mgr).
 		Named("all-services").
 		Watches(&corev1.Service{}, handler.EnqueueRequestsFromMapFunc(
-			func(ctx context.Context, obj client.Object) []reconcile.Request {
+			func(_ context.Context, _ client.Object) []reconcile.Request {
 				return []reconcile.Request{
 					{
-						NamespacedName: types.NamespacedName{
-							Name: "all-services",
-						},
+						Name: "all-services",
 					},
 				}
 			},
@@ -92,7 +90,11 @@ func run(ctx context.Context, log *slog.Logger, selector labels.Selector, metric
 		panic(err)
 	}
 
-	return mgr.Start(ctx)
+	if err := mgr.Start(ctx); err != nil {
+		return fmt.Errorf("manager stopped with an error: %w", err)
+	}
+
+	return nil
 }
 
 func envOrDefault(envName, defaultValue string) string {

@@ -214,6 +214,8 @@ func handleConn(ctx context.Context, log *slog.Logger, cconn net.Conn, keepalive
 	for idx := range backends {
 		idcs[idx] = idx
 	}
+	// Backend selection does not require cryptographically secure randomness.
+	//nolint:gosec // A weak random permutation is sufficient for load distribution.
 	rand.Shuffle(len(idcs), func(i, j int) {
 		idcs[i], idcs[j] = idcs[j], idcs[i]
 	})

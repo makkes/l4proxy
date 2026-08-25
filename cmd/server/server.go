@@ -3,7 +3,7 @@ package server
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"log/slog"
 	"os"
 	"time"
@@ -35,7 +35,7 @@ func NewCommand(log **slog.Logger) *cobra.Command {
 //revive:disable:cyclomatic // TODO: reduce cognitive complexity
 func run(ctx context.Context, log *slog.Logger, configFiles []string) error {
 	if len(configFiles) == 0 {
-		return fmt.Errorf("no config file provided, exiting.")
+		return errors.New("no config file provided")
 	}
 
 	cfgFileUpdateCh := make(chan string)
