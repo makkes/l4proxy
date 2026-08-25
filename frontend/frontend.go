@@ -4,12 +4,11 @@ package frontend
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"net"
 	"strings"
 	"time"
-
-	"github.com/go-logr/logr"
 
 	"github.com/makkes/l4proxy/backend"
 )
@@ -19,7 +18,7 @@ type Frontend struct {
 	BindNetwork string
 	BindHost    string
 	BindPort    string
-	Log         logr.Logger
+	Log         *slog.Logger
 	Backends    []*backend.Backend
 	timeout     time.Duration
 	listener    net.Listener
@@ -41,7 +40,7 @@ const (
 )
 
 // NewFrontend creates a new frontend with the given configuration. Use [Frontend.Start] for starting the listener.
-func NewFrontend(network, bind string, log logr.Logger, opts ...Option) (Frontend, error) {
+func NewFrontend(network, bind string, log *slog.Logger, opts ...Option) (Frontend, error) {
 	var f Frontend
 	hostPort, err := parseHostPort(bind)
 	if err != nil {
@@ -50,7 +49,7 @@ func NewFrontend(network, bind string, log logr.Logger, opts ...Option) (Fronten
 	f.BindNetwork = network
 	f.BindHost = hostPort.Host
 	f.BindPort = hostPort.Port
-	f.Log = log.WithValues("network", network, "bind", bind)
+	f.Log = log.With("network", network, "bind", bind)
 
 	for _, opt := range opts {
 		opt(&f)
@@ -147,7 +146,7 @@ func (f *Frontend) Start() error {
 	if err != nil {
 		return fmt.Errorf("cannot start listener at %s: %w", listenAddr, err)
 	}
-	f.Log.V(4).Info("listener started")
+	f.Log.Info("listener started")
 
 	keepaliveTimeout := f.timeout
 	if keepaliveTimeout == 0 {
@@ -161,7 +160,7 @@ func (f *Frontend) Start() error {
 				if strings.Contains(err.Error(), "use of closed network connection") {
 					return // assume this is a legit action caused by calling "Close" on the Frontend.
 				}
-				f.Log.Error(err, "Error accepting connection", "err", fmt.Sprintf("%#v", err))
+				f.Log.Error("Error accepting connection", "error", err)
 				return
 			}
 
@@ -179,11 +178,11 @@ func (f *Frontend) Start() error {
 				for {
 					select {
 					case <-timer.C:
-						f.Log.V(5).Info("connection timed out, closing", "conn", conn.RemoteAddr())
+						f.Log.Info("connection timed out, closing", "conn", conn.RemoteAddr())
 						cancel()
 						return
 					case <-keepaliveChan:
-						f.Log.V(5).Info("keeping connection alive", "conn", conn.RemoteAddr())
+						f.Log.Debug("keeping connection alive", "conn", conn.RemoteAddr())
 						if !timer.Stop() {
 							<-timer.C
 						}
@@ -201,38 +200,41 @@ func (f *Frontend) Start() error {
 func (f *Frontend) Stop() {
 	if f.listener != nil {
 		if err := f.listener.Close(); err != nil {
-			f.Log.Error(err, "failed closing listener connection")
+			f.Log.Error("failed closing listener connection", "error", err)
 		}
 		for _, be := range f.Backends {
 			be.Stop()
 		}
 	}
-	f.Log.V(4).Info("frontend stopped")
+	f.Log.Info("frontend stopped")
 }
 
-func handleConn(ctx context.Context, log logr.Logger, cconn net.Conn, keepaliveChan chan<- struct{}, backends []*backend.Backend) {
+func handleConn(ctx context.Context, log *slog.Logger, cconn net.Conn, keepaliveChan chan<- struct{}, backends []*backend.Backend) {
 	idcs := make([]int, len(backends))
 	for idx := range backends {
 		idcs[idx] = idx
 	}
+	// Backend selection does not require cryptographically secure randomness.
+	//nolint:gosec // A weak random permutation is sufficient for load distribution.
 	rand.Shuffle(len(idcs), func(i, j int) {
 		idcs[i], idcs[j] = idcs[j], idcs[i]
 	})
 	for _, idx := range idcs {
 		if backends[idx].IsHealthy() {
-			log.V(4).Info("selecting backend", "backend", backends[idx])
+			log.Debug("selecting backend", "backend", backends[idx])
 			if err := backends[idx].HandleConn(ctx, cconn, keepaliveChan); err != nil {
-				log.Error(err, "error handling connection",
+				log.Error("error handling connection",
+					"error", err,
 					"client", cconn.RemoteAddr().String(),
 					"backend_net", backends[idx].Network,
 					"backend_addr", backends[idx].Addr)
 			}
 			return
 		}
-		log.V(4).Info("skipping unhealthy backend", "backend", backends[idx])
+		log.Info("skipping unhealthy backend", "backend", backends[idx])
 	}
-	log.Error(nil, "all backends are unhealthy")
+	log.Error("all backends are unhealthy")
 	if err := cconn.Close(); err != nil {
-		log.Error(err, "failed closing client connection")
+		log.Error("failed closing client connection", "error", err)
 	}
 }

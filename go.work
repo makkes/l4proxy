@@ -1,7 +1,0 @@
-go 1.26.0
-
-use (
-	.
-	./cmd/l4proxy
-	./cmd/service-announcer
-)

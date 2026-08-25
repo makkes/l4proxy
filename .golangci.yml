@@ -32,18 +32,18 @@ formatters:
 linters:
   default: all
   disable:
-  - gomodguard # deprecated
-  - godox # re-enable as soon as all TODOs are fixed
   - cyclop
   - varnamelen
   - noinlineerr
   - nlreturn
   - mnd
   - exhaustruct
+  - exhaustruct_v5
   - wsl
   - wsl_v5
   - err113
   - lll # we use revive's line-length-limit for this
+  - godox
   exclusions:
     rules:
     - path: '(.+)_test\.go'
@@ -54,9 +54,6 @@ linters:
     - internal/mocks/
 
   settings:
-    gomoddirectives:
-      replace-local: true
-
     inamedparam:
       skip-single-param: true
 
@@ -70,16 +67,15 @@ linters:
         main:
           allow:
           - $gostd
-          - github.com/go-logr/glogr
-          - github.com/go-logr/logr
-          - github.com/go-logr/stdr
           - github.com/makkes/l4proxy
-          - github.com/spf13/pflag
+          - github.com/spf13/cobra
           - github.com/stretchr/testify
-          - gopkg.in/yaml.v3
+          - github.com/go-logr/logr
           - k8s.io/api
           - k8s.io/apimachinery
           - sigs.k8s.io/controller-runtime
+          - gopkg.in/yaml.v3
+
     errcheck:
       check-type-assertions: true
       check-blank: true
@@ -105,7 +101,6 @@ linters:
         - style
       disabled-checks:
         - unnamedResult
-        - whyNoLint
       settings:
         hugeParam:
           sizeThreshold: 100
@@ -146,10 +141,6 @@ linters:
     staticcheck:
       checks: ["all"]
 
-    testifylint:
-      disable:
-      - go-require # TODO: re-enable and fix errors
-
     funlen:
       lines: 100
       statements: 50
@@ -171,6 +162,7 @@ linters:
       min-occurrences: 3
       match-constant: true
       numbers: true
+      ignore-tests: true
 
     misspell:
       locale: US
