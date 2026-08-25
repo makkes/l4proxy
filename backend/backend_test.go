@@ -1,14 +1,15 @@
 package backend_test
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
 	"net"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/makkes/l4proxy/backend"
@@ -95,46 +96,32 @@ func TestTCPConnectionHandling(t *testing.T) {
 	})
 	require.NoError(t, err, "could not start backend listener")
 
+	backendErrCh := make(chan error, 1)
 	go func() {
-		conn, err := be.Accept()
-		if !assert.NoError(t, err, "could not accept connection") {
-			return
-		}
-		buf := make([]byte, 5)
-
-		n, err := conn.Read(buf)
-		if !assert.NoError(t, err, "could not read from backend conn") {
-			return
-		}
-		assert.Equal(t, 5, n, "unexpected number of bytes received from client")
-		assert.Equal(t, []byte("hello"), buf)
-
-		n, err = conn.Write([]byte("hello yourself"))
-		assert.NoError(t, err, "could not write to client")
-		assert.Equal(t, 14, n, "unexpected number of bytes written to client")
-
-		assert.NoError(t, conn.Close(), "could not close backend conn")
+		backendErrCh <- serveTCPTestConnection(be)
 	}()
 
 	b := backend.NewBackend("tcp4", be.Addr().String(), slog.New(slog.DiscardHandler))
+	clientWriteErrCh := make(chan error, 1)
 	go func() {
-		n, err := clientIn.Write([]byte("hello"))
-		assert.NoError(t, err, "could not write to client conn")
-		assert.Equal(t, 5, n, "unexpected number of bytes written to backend")
+		clientWriteErrCh <- writeTestRequest(clientIn)
 	}()
 
+	clientReadErrCh := make(chan error, 1)
 	go func() {
-		buf := make([]byte, 14)
-		n, err := clientIn.Read(buf)
-		assert.NoError(t, err, "could not read from client conn")
-		assert.Equal(t, 14, n, "unexpected number of bytes received from backend")
-
-		assert.NoError(t, clientOut.Close(), "could not close client conn")
+		clientReadErrCh <- readTestResponse(clientIn, clientOut)
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	keepaliveChan := make(chan struct{}, 2)
 	require.NoError(t, b.HandleConn(ctx, clientOut, keepaliveChan))
+	backendErr := <-backendErrCh
+	clientWriteErr := <-clientWriteErrCh
+	clientReadErr := <-clientReadErrCh
+	require.NoError(t, backendErr)
+	require.NoError(t, clientWriteErr)
+	require.NoError(t, clientReadErr)
+	require.NoError(t, be.Close(), "could not close backend listener")
 }
 
 func TestUDPConnectionHandling(t *testing.T) {
@@ -148,38 +135,21 @@ func TestUDPConnectionHandling(t *testing.T) {
 	})
 	require.NoError(t, err, "could not start backend listener")
 
+	backendErrCh := make(chan error, 1)
 	go func() {
-		buf := make([]byte, 5)
-
-		n, addr, err := be.ReadFromUDP(buf)
-		if !assert.NoError(t, err, "could not read from backend conn") {
-			return
-		}
-		assert.Equal(t, 5, n, "unexpected number of bytes received from client")
-		assert.Equal(t, []byte("hello"), buf)
-
-		n, err = be.WriteToUDP([]byte("hello yourself"), addr)
-		assert.NoError(t, err, "could not write to client")
-		assert.Equal(t, 14, n, "unexpected number of bytes written to client")
-
-		assert.NoError(t, be.Close(), "could not close backend conn")
+		backendErrCh <- serveUDPTestConnection(be)
 	}()
 
 	b := backend.NewBackend("udp4", be.LocalAddr().String(), slog.New(slog.DiscardHandler))
 
+	clientWriteErrCh := make(chan error, 1)
 	go func() {
-		n, err := clientIn.Write([]byte("hello"))
-		assert.NoError(t, err, "could not write to client conn")
-		assert.Equal(t, 5, n, "unexpected number of bytes written to backend")
+		clientWriteErrCh <- writeTestRequest(clientIn)
 	}()
 
+	clientReadErrCh := make(chan error, 1)
 	go func() {
-		buf := make([]byte, 14)
-		n, err := clientIn.Read(buf)
-		assert.NoError(t, err, "could not read from client conn")
-		assert.Equal(t, 14, n, "unexpected number of bytes received from backend")
-
-		assert.NoError(t, clientOut.Close(), "could not close client conn")
+		clientReadErrCh <- readTestResponse(clientIn, clientOut)
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -187,4 +157,107 @@ func TestUDPConnectionHandling(t *testing.T) {
 
 	keepaliveChan := make(chan struct{}, 2)
 	require.NoError(t, b.HandleConn(ctx, clientOut, keepaliveChan))
+	backendErr := <-backendErrCh
+	clientWriteErr := <-clientWriteErrCh
+	clientReadErr := <-clientReadErrCh
+	require.NoError(t, backendErr)
+	require.NoError(t, clientWriteErr)
+	require.NoError(t, clientReadErr)
+}
+
+const (
+	testRequest  = "hello"
+	testResponse = "hello yourself"
+)
+
+func serveTCPTestConnection(listener *net.TCPListener) (resultErr error) {
+	conn, err := listener.Accept()
+	if err != nil {
+		return fmt.Errorf("could not accept connection: %w", err)
+	}
+	defer func() {
+		if err := conn.Close(); resultErr == nil && err != nil {
+			resultErr = fmt.Errorf("could not close backend conn: %w", err)
+		}
+	}()
+
+	if err := readExpectedMessage(conn, testRequest); err != nil {
+		return err
+	}
+	return writeExpectedMessage(conn, testResponse)
+}
+
+func serveUDPTestConnection(conn *net.UDPConn) (resultErr error) {
+	defer func() {
+		if err := conn.Close(); resultErr == nil && err != nil {
+			resultErr = fmt.Errorf("could not close backend conn: %w", err)
+		}
+	}()
+
+	buf := make([]byte, len(testRequest))
+	n, addr, err := conn.ReadFromUDP(buf)
+	if err != nil {
+		return fmt.Errorf("could not read from backend conn: %w", err)
+	}
+	if err := validateMessage(buf, n, testRequest); err != nil {
+		return err
+	}
+
+	n, err = conn.WriteToUDP([]byte(testResponse), addr)
+	if err != nil {
+		return fmt.Errorf("could not write to client: %w", err)
+	}
+	if n != len(testResponse) {
+		return fmt.Errorf("unexpected number of bytes written to client: got %d, want %d", n, len(testResponse))
+	}
+
+	return nil
+}
+
+func writeTestRequest(conn net.Conn) error {
+	return writeExpectedMessage(conn, testRequest)
+}
+
+func writeExpectedMessage(conn net.Conn, message string) error {
+	n, err := conn.Write([]byte(message))
+	if err != nil {
+		return fmt.Errorf("could not write message: %w", err)
+	}
+	if n != len(message) {
+		return fmt.Errorf("unexpected number of bytes written: got %d, want %d", n, len(message))
+	}
+
+	return nil
+}
+
+func readTestResponse(reader, closer net.Conn) error {
+	if err := readExpectedMessage(reader, testResponse); err != nil {
+		return err
+	}
+	if err := closer.Close(); err != nil {
+		return fmt.Errorf("could not close client conn: %w", err)
+	}
+
+	return nil
+}
+
+func readExpectedMessage(conn net.Conn, expected string) error {
+	buf := make([]byte, len(expected))
+	n, err := conn.Read(buf)
+	if err != nil {
+		return fmt.Errorf("could not read message: %w", err)
+	}
+
+	return validateMessage(buf, n, expected)
+}
+
+func validateMessage(buf []byte, n int, expected string) error {
+	if n != len(expected) {
+		return fmt.Errorf("unexpected number of bytes received: got %d, want %d", n, len(expected))
+	}
+	if !bytes.Equal([]byte(expected), buf) {
+		return fmt.Errorf("unexpected bytes received: got %q, want %q", buf, expected)
+	}
+
+	return nil
 }
